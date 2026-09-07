@@ -1,0 +1,48 @@
+{
+  "name": "pricenova",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "db:push": "prisma db push",
+    "db:seed": "tsx --conditions=react-server prisma/seed.ts",
+    "db:studio": "prisma studio",
+    "db:seed:demo": "tsx --conditions=react-server prisma/seed-demo.ts",
+    "db:reset": "prisma db push --force-reset && npm run db:seed",
+    "test:unit": "vitest run tests/money.test.ts"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.10.0",
+    "@prisma/client": "^7.10.0",
+    "next": "^15.5.25",
+    "pg": "^8.23.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "server-only": "^0.0.1"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.7",
+    "@prisma/adapter-better-sqlite3": "^7.10.0",
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^26.4.1",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^15.5.25",
+    "prisma": "^7.10.0",
+    "puppeteer-core": "^24.43.1",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.13",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.11"
+  }
+}

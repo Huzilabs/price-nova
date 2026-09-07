@@ -1,0 +1,971 @@
+// ============================================================================
+// PriceNova — data model
+// ----------------------------------------------------------------------------
+// The ledger is the spine. Every model that moves money references a
+// LedgerTransaction; nothing mutates a balance on its own.
+//
+// Runs on Supabase Postgres. Status columns are real database enums, so an
+// invalid status cannot exist even if a service forgets to check.
+// Money is BigInt minor units (cents). Never Float, never Decimal-as-float.
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Identity & access
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  phone         String?   @unique
+  passwordHash  String
+  fullName      String
+  status        UserStatus @default(ACTIVE)
+  locale        Locale    @default(en)
+
+  referralCode  String    @unique
+  referredById  String?
+  referredBy    User?     @relation("Referrals", fields: [referredById], references: [id])
+  referrals     User[]    @relation("Referrals")
+
+  emailVerifiedAt DateTime?
+  phoneVerifiedAt DateTime?
+  lastLoginAt     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  roles           UserRole[]
+  wallet          Wallet?
+  ledgerAccounts  LedgerAccount[]
+  participations  Participation[]
+  deposits        Deposit[]
+  withdrawals     Withdrawal[]
+  referralsMade   Referral[]     @relation("Referrer")
+  referralRecord  Referral?      @relation("Referred")
+  commissions     Commission[]
+  drawEntries     DrawEntry[]
+  drawWins        DrawWinner[]
+  prizes          Prize[]
+  bumperAwards    BumperAward[]
+  accrualGrants   AccrualGrant[]
+  notifications   Notification[]
+  auditLogs       AuditLog[]     @relation("ActorAudit")
+  emailTokens     EmailVerificationToken[]
+  phoneCodes      PhoneVerification[]
+  resetTokens     PasswordResetToken[]
+  payments        Payment[]
+
+  @@index([referredById])
+  @@index([status])
+}
+
+model Role {
+  id          String     @id @default(cuid())
+  key         RoleKey    @unique
+  name        String
+  permissions Json
+  users       UserRole[]
+}
+
+model UserRole {
+  userId     String
+  roleId     String
+  grantedAt  DateTime @default(now())
+  grantedBy  String?
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+}
+
+// ---------------------------------------------------------------------------
+// Plans & participation
+// ---------------------------------------------------------------------------
+
+model Plan {
+  id                 String  @id @default(cuid())
+  name               String
+  slug               String  @unique
+  description        String?
+  /// Participation cost, minor units.
+  depositAmount      BigInt
+  currency           String  @default("USD")
+  /// Rule (ii): principal locked this many days from deposit.
+  lockPeriodDays     Int
+  /// Rule (vi): commission per qualifying referral, minor units.
+  commissionAmount   BigInt
+  /// Rule (vi): commission requires the referrer's own principal to stay in.
+  commissionRequiresActivePrincipal Boolean @default(true)
+  drawEligible       Boolean @default(true)
+  status             PlanStatus @default(DRAFT)
+  sortOrder          Int     @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  participations Participation[]
+  deposits       Deposit[]
+  payments       Payment[]
+
+  @@index([status])
+}
+
+model Participation {
+  id            String   @id @default(cuid())
+  userId        String
+  planId        String
+  status        ParticipationStatus @default(PENDING)
+  activatedAt   DateTime?
+  /// Computed at activation: activatedAt + plan.lockPeriodDays.
+  principalUnlocksAt DateTime?
+  principalWithdrawnAt DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user      User      @relation(fields: [userId], references: [id])
+  plan      Plan      @relation(fields: [planId], references: [id])
+  deposit   Deposit?
+
+  @@index([userId, status])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// Money in / money out
+// ---------------------------------------------------------------------------
+
+model Deposit {
+  id              String   @id @default(cuid())
+  userId          String
+  planId          String
+  participationId String?  @unique
+  amount          BigInt
+  currency        String   @default("USD")
+  method          PaymentMethod
+  /// On-chain hash or provider reference. Unique per method: the same payment
+  /// can never be credited twice, however many times a callback fires.
+  externalRef     String?
+  status          DepositStatus @default(PENDING)
+  proofUrl        String?
+  reviewedById    String?
+  reviewedAt      DateTime?
+  rejectionReason String?
+  ledgerTxId      String?  @unique
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user          User               @relation(fields: [userId], references: [id])
+  plan          Plan               @relation(fields: [planId], references: [id])
+  participation Participation?     @relation(fields: [participationId], references: [id])
+  ledgerTx      LedgerTransaction? @relation(fields: [ledgerTxId], references: [id])
+  payment       Payment?
+
+  @@unique([method, externalRef])
+  @@index([userId])
+  @@index([status, createdAt])
+}
+
+model Withdrawal {
+  id            String   @id @default(cuid())
+  userId        String
+  amount        BigInt
+  currency      String   @default("USD")
+  /// Which rule set governs this request — the windows differ per rules (v),
+  /// (ix) and (x).
+  sourceKind    WithdrawalSource
+  method        PaymentMethod
+  destination   String   // address or account number
+  status        WithdrawalStatus @default(REQUESTED)
+  /// Set when funds move AVAILABLE -> PENDING at request time.
+  reserveTxId   String?  @unique
+  /// Set when funds leave PENDING at payout time.
+  payoutTxId    String?  @unique
+  reviewedById  String?
+  reviewedAt    DateTime?
+  paidAt        DateTime?
+  rejectionReason String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user     User               @relation(fields: [userId], references: [id])
+  reserveTx LedgerTransaction? @relation("WithdrawalReserve", fields: [reserveTxId], references: [id])
+  payoutTx  LedgerTransaction? @relation("WithdrawalPayout", fields: [payoutTxId], references: [id])
+
+  @@index([userId])
+  @@index([status, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Ledger — double entry. See docs/ARCHITECTURE.md.
+// ---------------------------------------------------------------------------
+
+model LedgerAccount {
+  id       String  @id @default(cuid())
+  kind     LedgerAccountKind
+  /// Null for platform accounts.
+  userId   String?
+  /// The userId, or the literal "PLATFORM". Exists because SQL treats NULLs as
+  /// distinct: a unique index over a nullable userId would happily allow two
+  /// PLATFORM_CASH accounts. This column makes the constraint real.
+  ownerKey String
+  currency String  @default("USD")
+  /// Cached sum of entries. Rebuildable; entries remain the source of truth.
+  balance  BigInt  @default(0)
+  createdAt DateTime @default(now())
+
+  user    User?         @relation(fields: [userId], references: [id])
+  entries LedgerEntry[]
+
+  @@unique([kind, ownerKey, currency])
+  @@index([userId])
+}
+
+model LedgerTransaction {
+  id            String   @id @default(cuid())
+  type          LedgerTxType
+  currency      String   @default("USD")
+  description   String
+  referenceType String?
+  referenceId   String?
+  /// The idempotency guarantee. A duplicated payment callback, a
+  /// double-clicked approval and a re-run commission job all collide here and
+  /// the second one is rejected by the database rather than by a code path
+  /// somebody forgot to write.
+  idempotencyKey String  @unique
+  createdByAdminId String?
+  metadata      Json?
+  createdAt     DateTime @default(now())
+
+  entries              LedgerEntry[]
+  deposit              Deposit?
+  withdrawalReserve    Withdrawal?  @relation("WithdrawalReserve")
+  withdrawalPayout     Withdrawal?  @relation("WithdrawalPayout")
+  commission           Commission?
+  prize                Prize?
+  accrualPosting       AccrualPosting?
+
+  @@index([type, createdAt])
+  @@index([referenceType, referenceId])
+}
+
+model LedgerEntry {
+  id            String   @id @default(cuid())
+  transactionId String
+  accountId     String
+  /// Entries of a transaction must sum to zero.
+  direction     Direction
+  amount        BigInt
+  /// Per-account running balance. This is what makes a statement auditable.
+  balanceBefore BigInt
+  balanceAfter  BigInt
+  createdAt     DateTime @default(now())
+
+  transaction LedgerTransaction @relation(fields: [transactionId], references: [id])
+  account     LedgerAccount     @relation(fields: [accountId], references: [id])
+
+  @@index([accountId, createdAt])
+  @@index([transactionId])
+}
+
+/// Denormalised wallet buckets for fast reads. Never written directly — only
+/// by LedgerService after posting, and rebuildable from LedgerEntry.
+model Wallet {
+  id               String @id @default(cuid())
+  userId           String @unique
+  currency         String @default("USD")
+  available        BigInt @default(0)
+  locked           BigInt @default(0)
+  pending          BigInt @default(0)
+  lifetimeEarned   BigInt @default(0)
+  lifetimeWithdrawn BigInt @default(0)
+  updatedAt        DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+// ---------------------------------------------------------------------------
+// Referrals & commission
+// ---------------------------------------------------------------------------
+
+model Referral {
+  id          String   @id @default(cuid())
+  referrerId  String
+  referredId  String   @unique
+  /// True once the referred user's deposit is CONFIRMED — rule (vi).
+  qualified   Boolean  @default(false)
+  qualifiedAt DateTime?
+  createdAt   DateTime @default(now())
+
+  referrer   User        @relation("Referrer", fields: [referrerId], references: [id])
+  referred   User        @relation("Referred", fields: [referredId], references: [id])
+  commission Commission?
+
+  @@index([referrerId, qualified])
+}
+
+model Commission {
+  id          String   @id @default(cuid())
+  userId      String
+  referralId  String   @unique
+  amount      BigInt
+  status      CommissionStatus @default(EARNED)
+  ledgerTxId  String?  @unique
+  createdAt   DateTime @default(now())
+
+  user     User               @relation(fields: [userId], references: [id])
+  referral Referral           @relation(fields: [referralId], references: [id])
+  ledgerTx LedgerTransaction? @relation(fields: [ledgerTxId], references: [id])
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Draws — rule (iii), (iv), (xi)
+// ---------------------------------------------------------------------------
+
+model Draw {
+  id             String   @id @default(cuid())
+  name           String
+  description    String?
+  /// Shown on the draw card and detail page. Null renders a typographic
+  /// fallback rather than a placeholder image.
+  imageUrl       String?
+  /// When participation opens. Before this the draw reads as UPCOMING.
+  startsAt       DateTime @default(now())
+  /// Free text: what a participant needs in order to enter.
+  entryRequirement String?
+  status         DrawStatus @default(DRAFT)
+  /// Rule (xi): entries after this timestamp roll into the next draw.
+  entryCutoffAt  DateTime
+  drawAt         DateTime
+  /// MANUAL | RANDOM — configurable per §8, MANUAL for MVP.
+  selectionMode  SelectionMode @default(MANUAL)
+  adminNotes     String?
+
+  /// The homepage draw. Exactly one row may hold `true`; every other row holds
+  /// NULL, never `false`. Postgres treats NULLs as distinct under a unique
+  /// index, so this single column enforces "only one main draw" in the
+  /// database rather than in application code that could race.
+  isMain         Boolean? @unique
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  prizeTiers DrawPrizeTier[]
+  entries    DrawEntry[]
+  winners    DrawWinner[]
+
+  @@index([status, drawAt])
+}
+
+/// Rule (iv) expressed generally: N winners at a given prize value. This shape
+/// supports every reading of the handwritten "250 person -> 200$ / 500 -> 50$".
+model DrawPrizeTier {
+  id          String @id @default(cuid())
+  drawId      String
+  name        String
+  winnerCount Int
+  prizeAmount BigInt
+  sortOrder   Int    @default(0)
+
+  draw    Draw         @relation(fields: [drawId], references: [id], onDelete: Cascade)
+  winners DrawWinner[]
+
+  @@index([drawId])
+}
+
+/// Immutable snapshot of who was eligible when entries closed. Without this a
+/// past draw cannot be audited, because eligibility is time-dependent.
+model DrawEntry {
+  id              String   @id @default(cuid())
+  drawId          String
+  userId          String
+  entryNumber     String
+  /// Why this user was eligible, captured at cutoff.
+  eligibilityNote String?
+  createdAt       DateTime @default(now())
+
+  draw Draw @relation(fields: [drawId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([drawId, userId])
+  @@unique([drawId, entryNumber])
+  @@index([drawId])
+}
+
+model DrawWinner {
+  id           String   @id @default(cuid())
+  drawId       String
+  prizeTierId  String
+  userId       String
+  selectedById String?
+  selectedAt   DateTime @default(now())
+  prizeId      String?  @unique
+
+  draw      Draw          @relation(fields: [drawId], references: [id])
+  prizeTier DrawPrizeTier @relation(fields: [prizeTierId], references: [id])
+  user      User          @relation(fields: [userId], references: [id])
+  prize     Prize?        @relation(fields: [prizeId], references: [id])
+
+  @@unique([drawId, userId])
+  @@index([drawId])
+}
+
+// ---------------------------------------------------------------------------
+// Prizes & bumper events — rules (vii), (viii), (ix)
+// ---------------------------------------------------------------------------
+
+model Prize {
+  id          String   @id @default(cuid())
+  userId      String
+  /// Rule (viii) offers a 70cc Honda or $500.
+  prizeType   PrizeType
+  /// Minor units for CASH; the cash-equivalent for PHYSICAL.
+  amount      BigInt
+  itemName    String?
+  sourceType  PrizeSource
+  sourceId    String
+  status      PrizeStatus @default(PENDING)
+  ledgerTxId  String?  @unique
+  issuedById  String?
+  issuedAt    DateTime?
+  createdAt   DateTime @default(now())
+
+  user       User               @relation(fields: [userId], references: [id])
+  ledgerTx   LedgerTransaction? @relation(fields: [ledgerTxId], references: [id])
+  drawWinner DrawWinner?
+
+  @@index([userId])
+  @@index([sourceType, sourceId])
+}
+
+model BumperEvent {
+  id            String   @id @default(cuid())
+  name          String
+  /// Qualifying referrals required — 100, 300, 500, 1000, ... configurable.
+  threshold     Int
+  prizeType     PrizeType
+  prizeAmount   BigInt
+  itemName      String?
+  /// Whether the winner chooses between the item and the cash equivalent.
+  winnerChooses Boolean  @default(false)
+  status        BumperEventStatus @default(ACTIVE)
+  createdAt     DateTime @default(now())
+
+  awards BumperAward[]
+
+  @@unique([threshold])
+}
+
+model BumperAward {
+  id            String   @id @default(cuid())
+  bumperEventId String
+  userId        String
+  /// Referral count at the moment the threshold was crossed.
+  qualifyingCount Int
+  status        BumperAwardStatus @default(PENDING_REVIEW)
+  prizeId       String?
+  approvedById  String?
+  approvedAt    DateTime?
+  createdAt     DateTime @default(now())
+
+  bumperEvent BumperEvent @relation(fields: [bumperEventId], references: [id])
+  user        User        @relation(fields: [userId], references: [id])
+
+  /// A threshold is awarded to a given user exactly once.
+  @@unique([bumperEventId, userId])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// Daily accrual — rule (xiv): 1000 referrals -> $10/day
+// ---------------------------------------------------------------------------
+
+model AccrualGrant {
+  id             String   @id @default(cuid())
+  userId         String
+  threshold      Int
+  dailyAmount    BigInt
+  status         AccrualStatus @default(ACTIVE)
+  startedAt      DateTime
+  /// Rule (xiv): accrued balance is not withdrawable until this date.
+  withdrawableAt DateTime
+  endedAt        DateTime?
+  createdAt      DateTime @default(now())
+
+  user     User             @relation(fields: [userId], references: [id])
+  postings AccrualPosting[]
+
+  @@unique([userId, threshold])
+  @@index([status])
+}
+
+/// One row per grant per day. The unique constraint is what stops a re-run of
+/// the daily job from paying twice.
+model AccrualPosting {
+  id             String   @id @default(cuid())
+  accrualGrantId String
+  /// UTC calendar day, "YYYY-MM-DD".
+  postingDate    String
+  amount         BigInt
+  ledgerTxId     String?  @unique
+  createdAt      DateTime @default(now())
+
+  grant    AccrualGrant       @relation(fields: [accrualGrantId], references: [id])
+  ledgerTx LedgerTransaction? @relation(fields: [ledgerTxId], references: [id])
+
+  @@unique([accrualGrantId, postingDate])
+}
+
+// ---------------------------------------------------------------------------
+// Platform
+// ---------------------------------------------------------------------------
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String
+  title     String
+  body      String
+  linkPath  String?
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, readAt])
+}
+
+/// Append-only. No update or delete path exists in the application.
+model AuditLog {
+  id           String   @id @default(cuid())
+  actorId      String?
+  actorRole    String?
+  action       String
+  entityType   String
+  entityId     String
+  previousState Json?
+  newState     Json?
+  reason       String?
+  ipAddress    String?
+  userAgent    String?
+  createdAt    DateTime @default(now())
+
+  actor User? @relation("ActorAudit", fields: [actorId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
+}
+
+/// Runtime configuration: withdrawal windows, cutoff day, thresholds. Nothing
+/// that the business might change belongs in code.
+model Setting {
+  key         String   @id
+  value       Json
+  description String?
+  updatedById String?
+  updatedAt   DateTime @updatedAt
+}
+
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  CLOSED
+}
+enum Locale {
+  en
+  ur
+}
+enum RoleKey {
+  USER
+  SUPPORT_ADMIN
+  FINANCE_ADMIN
+  ADMIN
+  SUPER_ADMIN
+}
+enum PlanStatus {
+  DRAFT
+  ACTIVE
+  RETIRED
+}
+enum ParticipationStatus {
+  PENDING
+  ACTIVE
+  PRINCIPAL_WITHDRAWN
+  CANCELLED
+}
+enum PaymentMethod {
+  JAZZCASH
+  EASYPAISA
+  CARD
+  BTC
+  USDT_TRC20
+  USDT_ERC20
+  USDT_BEP20
+  /// Manual rails. These are the ONLY methods that may ask a user for a
+  /// transaction reference; automated methods must never do so.
+  MANUAL_BANK
+  MANUAL_CRYPTO
+}
+
+enum PaymentProvider {
+  JAZZCASH
+  EASYPAISA
+  BANK_TRANSFER
+  CARD_GATEWAY
+  CRYPTO_GATEWAY
+  /// Admin-verified. No external provider involved.
+  MANUAL
+}
+
+/// The provider-side lifecycle. Distinct from DepositStatus, which is the
+/// ledger-side record of whether money was credited.
+enum PaymentStatus {
+  PENDING
+  WAITING_FOR_PAYMENT
+  /// A verification attempt is in flight against the provider.
+  VERIFYING
+  PAYMENT_DETECTED
+  CONFIRMING
+  /// The provider cannot confirm this automatically — a person must look.
+  /// This is what an unconfigured or read-only provider produces. It is NOT
+  /// a failure, and it is emphatically not a success.
+  MANUAL_REVIEW_REQUIRED
+  SUCCESS
+  FAILED
+  REJECTED
+  UNDERPAID
+  OVERPAID
+  EXPIRED
+  CANCELLED
+  REFUNDED
+}
+
+/// The rails an administrator can configure a receiving account for.
+enum PaymentAccountType {
+  EASYPAISA
+  JAZZCASH
+  BANK_TRANSFER
+  CRYPTO
+}
+enum DepositStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+}
+enum WithdrawalStatus {
+  REQUESTED
+  PENDING_REVIEW
+  APPROVED
+  PROCESSING
+  PAID
+  REJECTED
+}
+enum WithdrawalSource {
+  PRINCIPAL
+  COMMISSION
+  PRIZE
+  BUMPER
+  ACCRUAL
+}
+enum CommissionStatus {
+  EARNED
+  REVERSED
+}
+enum DrawStatus {
+  DRAFT
+  OPEN
+  ENTRY_CLOSED
+  READY_FOR_DRAW
+  WINNER_SELECTED
+  PRIZE_ISSUED
+  COMPLETED
+  CANCELLED
+}
+enum SelectionMode {
+  MANUAL
+  RANDOM
+}
+enum PrizeType {
+  CASH
+  PHYSICAL
+}
+enum PrizeSource {
+  DRAW
+  BUMPER
+}
+enum PrizeStatus {
+  PENDING
+  ISSUED
+  FULFILLED
+  CANCELLED
+}
+enum BumperEventStatus {
+  ACTIVE
+  RETIRED
+}
+enum BumperAwardStatus {
+  PENDING_REVIEW
+  APPROVED
+  ISSUED
+  REJECTED
+}
+enum AccrualStatus {
+  ACTIVE
+  PAUSED
+  ENDED
+}
+enum Direction {
+  DEBIT
+  CREDIT
+}
+
+enum LedgerAccountKind {
+  USER_AVAILABLE
+  USER_LOCKED
+  USER_PENDING
+  PLATFORM_CASH
+  PRIZE_POOL
+  COMMISSION_EXPENSE
+  DEPOSIT_LIABILITY
+}
+
+enum LedgerTxType {
+  DEPOSIT
+  WITHDRAWAL
+  REFERRAL_COMMISSION
+  LUCKY_DRAW_REWARD
+  BUMPER_PRIZE
+  DAILY_ACCRUAL
+  ADJUSTMENT
+  REFUND
+  FEE
+  LOCK
+  UNLOCK
+}
+
+
+// ---------------------------------------------------------------------------
+// Verification & recovery
+//
+// Nothing here stores a secret in a form that survives a database leak: the
+// email link and the SMS code are hashed, exactly like a password. The plain
+// value exists only in transit, and only once.
+// ---------------------------------------------------------------------------
+
+model EmailVerificationToken {
+  id        String   @id @default(cuid())
+  userId    String
+  /// SHA-256 of the token that went out in the link.
+  tokenHash String   @unique
+  email     String
+  expiresAt DateTime
+  consumedAt DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, consumedAt])
+}
+
+model PhoneVerification {
+  id        String   @id @default(cuid())
+  userId    String
+  phone     String
+  /// SHA-256 of the OTP. Never the code itself.
+  codeHash  String
+  expiresAt DateTime
+  /// Wrong guesses. The record is burned once this hits the limit, so an OTP
+  /// cannot be brute-forced inside its validity window.
+  attempts  Int      @default(0)
+  consumedAt DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  consumedAt DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, consumedAt])
+}
+
+
+// ---------------------------------------------------------------------------
+// Payments
+//
+// A Payment is one attempt to pay for a Deposit through a provider. The
+// Deposit remains the ledger-side record — it is what `confirmDeposit()`
+// credits and what the admin queue has always shown. Separating them means the
+// eleven provider states (waiting, detected, confirming, underpaid, expired …)
+// never leak into the three states the ledger cares about.
+//
+// A Deposit has at most one Payment. Retrying a failed payment cancels the old
+// one and creates a new Deposit + Payment pair, so history stays intact.
+// ---------------------------------------------------------------------------
+
+model Payment {
+  id         String @id @default(cuid())
+  /// The user-visible reference. Sent to providers as our order id.
+  reference  String @unique
+
+  userId     String
+  planId     String
+  depositId  String @unique
+
+  provider   PaymentProvider
+  method     PaymentMethod
+  status     PaymentStatus @default(PENDING)
+
+  /// What we asked for, in USD minor units.
+  expectedAmount BigInt
+  currency       String @default("USD")
+
+  /// For crypto: the asset amount and its own decimals, as a string because
+  /// 0.00042317 BTC does not fit an integer cent model and must never be
+  /// rounded through a float.
+  cryptoAsset      String?
+  cryptoNetwork    String?
+  cryptoAmount     String?
+  receivingAddress String?
+
+  /// What actually arrived. Null until the provider reports something.
+  receivedAmount   BigInt?
+  receivedCrypto   String?
+
+  /// Provider's own identifier for the transaction, and the on-chain hash.
+  providerTxId String?
+  txHash       String?
+
+  confirmations         Int @default(0)
+  requiredConfirmations Int @default(0)
+
+  /// Where to send the user to complete a hosted checkout.
+  checkoutUrl String?
+
+  /// The receiving account this payment was made into. Null only for hosted
+  /// checkouts, which have no account of ours to display.
+  paymentAccountId String?
+
+  /// What the USER told us. Never trusted — it is the lookup key handed to the
+  /// provider, and the thing an admin reads when no API can confirm it.
+  userSubmittedReference String?
+  userSubmittedAmount    BigInt?
+
+  /// Rate-limiting and audit for the Verify button.
+  verificationAttempts Int @default(0)
+  lastVerifiedAt       DateTime?
+
+  failureReason String?
+  /// Raw provider payload, kept for dispute resolution. Never trusted as truth.
+  providerPayload Json?
+
+  expiresAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user           User           @relation(fields: [userId], references: [id])
+  plan           Plan           @relation(fields: [planId], references: [id])
+  deposit        Deposit        @relation(fields: [depositId], references: [id], onDelete: Cascade)
+  paymentAccount PaymentAccount? @relation(fields: [paymentAccountId], references: [id])
+  events         PaymentEvent[]
+
+  /// One provider transaction can only ever back one payment.
+  @@unique([provider, providerTxId])
+  /// The same on-chain transaction can never credit twice.
+  @@unique([cryptoNetwork, txHash])
+  /// Rule 12: one reference, one credit. Postgres treats NULLs as distinct, so
+  /// payments that have not been given a reference yet do not collide.
+  @@unique([method, userSubmittedReference])
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@index([provider, status])
+  @@index([receivingAddress])
+}
+
+/// Append-only audit of everything a provider told us about a payment.
+/// Webhooks are replayed and reordered in the wild; this is how a disputed
+/// payment gets reconstructed.
+model PaymentEvent {
+  id         String @id @default(cuid())
+  paymentId  String
+  /// e.g. "webhook.received", "status.changed", "verification.failed"
+  type       String
+  fromStatus PaymentStatus?
+  toStatus   PaymentStatus?
+  message    String?
+  payload    Json?
+  /// Deduplicates replayed webhooks at the event level.
+  dedupeKey  String? @unique
+  createdAt  DateTime @default(now())
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId, createdAt])
+}
+
+
+/// A receiving account an administrator publishes for participants to pay into.
+///
+/// This is the single source of the number/address shown at checkout. Nothing
+/// about a receiving account is ever written into the frontend or a constant —
+/// changing where money goes must be an admin action with an audit trail, not
+/// a deploy.
+///
+/// API credentials are NOT stored here. They live in environment variables,
+/// server-side only; this table holds only what is safe to show a participant.
+model PaymentAccount {
+  id        String             @id @default(cuid())
+  type      PaymentAccountType
+  /// What the participant sees, e.g. "Easypaisa" or "USDT · TRC20".
+  label     String
+  enabled   Boolean            @default(false)
+  sortOrder Int                @default(0)
+
+  /// Mobile wallets and bank transfers.
+  accountName   String?
+  accountNumber String?
+  bankName      String?
+  iban          String?
+
+  /// Crypto.
+  network       String?
+  walletAddress String?
+
+  /// Shown verbatim under the account. Markdown-free plain text.
+  instructions String?
+
+  /// Whether to attempt provider-API verification for payments into this
+  /// account. False means every payment here goes to manual review — which is
+  /// the honest default until credentials exist.
+  autoVerify Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  payments Payment[]
+
+  @@index([enabled, sortOrder])
+}

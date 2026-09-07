@@ -1,0 +1,286 @@
+@import "tailwindcss";
+
+/* ==========================================================================
+   PriceNova — Design System v2: "Prize Night"
+   --------------------------------------------------------------------------
+   v1 was a bank statement on warm paper. Correct for a fintech product, wrong
+   for this one: it made a draw feel like a quarterly report.
+
+   v2 is a dark stage with the prize lit. The rules that replace v1's:
+
+     1. THE PRIZE IS THE HERO. Every screen answers "what can I win and when"
+        before it answers anything else. Gold is reserved for prize values and
+        the moment of winning — it stays scarce so it keeps meaning.
+     2. PROGRESS IS ALWAYS VISIBLE. If a user is N steps from something, show
+        the bar. Mint means "you are moving"; coral means "clock is running".
+     3. DARK, NOT GRIM. Warm near-black with a green undertone, never blue-grey.
+        Colour and motion carry the energy so the layout does not have to shout.
+
+   Still forbidden: casino imagery, slot machines, neon-on-black tackiness,
+   purple AI gradients, generic blue fintech.
+   ========================================================================== */
+
+@theme {
+  /* --- Surfaces: warm forest-black, lit from within -------------------- */
+  --color-base:        #0b1210;  /* app background                        */
+  --color-surface:     #121b17;  /* cards, sheets                         */
+  --color-surface-2:   #18241e;  /* raised within a card                  */
+  --color-surface-3:   #21322a;  /* hover, selected                       */
+  --color-line:        #26382e;  /* hairlines                             */
+  --color-line-soft:   #1b2822;
+
+  /* Light surfaces, used only where dense reading demands it (admin tables) */
+  --color-paper:       #f7f9f7;
+  --color-paper-2:     #eef2ef;
+  --color-paper-line:  #dbe3dd;
+  --color-paper-ink:   #0b1210;
+
+  /* --- Text ------------------------------------------------------------ */
+  --color-hi:          #f2f7f3;  /* 17.5:1 on base                        */
+  --color-mid:         #a9bdb1;  /*  9.6:1                                */
+  --color-lo:          #7b9186;  /*  5.6:1 — the floor for real text      */
+  --color-faint:       #55675d;  /*  3.1:1 — dividers and decoration only */
+
+  /* --- Prize gold. Prize values and wins. Nothing else. ---------------- */
+  /* 11.6:1 on base. Dark ink on gold is 11.4:1 — gold buttons take dark text. */
+  --color-gold:        #f5c451;
+  --color-gold-hi:     #ffd979;
+  --color-gold-deep:   #a87a1a;
+  --color-gold-tint:   #2a2113;
+
+  /* --- Mint: progress, success, "you are moving" ----------------------- */
+  --color-mint:        #3ddc91;
+  --color-mint-hi:     #6ef0b3;
+  --color-mint-deep:   #128f5c;
+  --color-mint-tint:   #10261d;
+
+  /* --- Coral: urgency, the clock, primary CTA -------------------------- */
+  /* 6.7:1 on base. WHITE ON CORAL IS 2.8:1 AND FAILS — coral buttons take
+     dark ink (6.6:1), never white. Measured, not guessed.                  */
+  --color-coral:       #ff6b3d;
+  --color-coral-hi:    #ff8a63;
+  --color-coral-deep:  #c2410c;
+  --color-coral-tint:  #2b1710;
+
+  /* --- Status ---------------------------------------------------------- */
+  --color-ok:          #3ddc91;
+  --color-warn:        #f5c451;
+  --color-bad:         #ff6b6b;
+  --color-bad-tint:    #2b1414;
+  --color-info:        #6ee0f0;
+  --color-info-tint:   #0f2529;
+
+  /* --- Chart series -----------------------------------------------------
+     Not the UI accents: gold/mint/coral are too light for the chart
+     lightness band and gold-vs-mint measures ΔE 6.7 under protanopia. These
+     three pass every check on this surface, across all pairs.            */
+  --color-series-1:    #2aa582;
+  --color-series-2:    #e2703a;
+  --color-series-3:    #5e93d8;
+  --color-grid:        #1e2c25;
+  --color-axis:        #2b3d34;
+
+  /* --- Type ------------------------------------------------------------ */
+  --font-display: var(--font-display), "Archivo", system-ui, sans-serif;
+  --font-sans:    var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono:    var(--font-mono), ui-monospace, monospace;
+  --font-urdu:    var(--font-nastaliq), serif;
+
+  /* Bigger, louder, fewer steps than v1. A rewards product speaks in
+     headlines and numbers, not in nine sizes of body copy.                */
+  --text-micro:     0.6875rem;  --text-micro--line-height: 0.9rem;
+  --text-tag:       0.75rem;    --text-tag--line-height: 1rem;
+  --text-sm:        0.8125rem;  --text-sm--line-height: 1.15rem;
+  --text-base:      0.9375rem;  --text-base--line-height: 1.45rem;
+  --text-lg:        1.0625rem;  --text-lg--line-height: 1.55rem;
+  --text-title:     1.375rem;   --text-title--line-height: 1.6rem;
+  --text-h2:        1.75rem;    --text-h2--line-height: 1.9rem;
+  --text-h1:        2.25rem;    --text-h1--line-height: 2.3rem;
+  --text-mega:      3.25rem;    --text-mega--line-height: 1;
+  --text-prize:     4.5rem;     --text-prize--line-height: 0.92;
+
+  /* --- Geometry: v1 capped radii at 8px to feel serious. That cap is the
+         single biggest reason it read corporate. Lifted. ---------------- */
+  --radius-sm:   6px;
+  --radius-md:  10px;
+  --radius-lg:  16px;
+  --radius-xl:  22px;
+  --radius-2xl: 28px;
+
+  /* --- Elevation: glow, not drop shadow. On dark, a shadow is invisible;
+         light is what makes a surface feel raised. --------------------- */
+  --shadow-card:    0 1px 0 0 rgb(255 255 255 / 0.04) inset, 0 12px 32px -16px rgb(0 0 0 / 0.8);
+  --shadow-lift:    0 1px 0 0 rgb(255 255 255 / 0.06) inset, 0 24px 48px -20px rgb(0 0 0 / 0.9);
+  --shadow-gold:    0 0 0 1px rgb(245 196 81 / 0.28), 0 18px 50px -22px rgb(245 196 81 / 0.55);
+  --shadow-coral:   0 10px 30px -12px rgb(255 107 61 / 0.7);
+  --shadow-mint:    0 10px 30px -12px rgb(61 220 145 / 0.55);
+
+  --ease-out:  cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-pop:  cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+:root {
+  --dur-1: 140ms;
+  --dur-2: 220ms;
+  --dur-3: 320ms;
+  --dur-celebrate: 1100ms;
+
+  --row-h: 2.75rem;
+  --cell-x: 1rem;
+  --cell-y: 0.75rem;
+  --field-h: 3rem;
+  --control-h: 2.75rem;
+}
+
+[data-density="compact"] {
+  --row-h: 2.25rem;
+  --cell-x: 0.75rem;
+  --cell-y: 0.375rem;
+  --field-h: 2.25rem;
+  --control-h: 2rem;
+}
+
+/* ==========================================================================
+   Base
+   ========================================================================== */
+
+* { border-color: var(--color-line); }
+
+html { -webkit-text-size-adjust: 100%; color-scheme: dark; }
+
+body {
+  background: var(--color-base);
+  color: var(--color-hi);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* A single, very soft warm light from above. Not a gradient blob — you
+     should feel it rather than see it.                                     */
+  background-image: radial-gradient(120% 60% at 50% -10%, #14201a 0%, transparent 60%);
+  background-attachment: fixed;
+}
+
+[lang="ur"] { font-family: var(--font-urdu); line-height: 2.4; }
+
+:focus-visible {
+  outline: 2px solid var(--color-mint);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+::selection { background: var(--color-gold); color: #1a1206; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ==========================================================================
+   Utilities
+   ========================================================================== */
+
+@utility num {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+@utility mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/** Prize figures. Tight, heavy, gold. */
+@utility prize {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+@utility tag {
+  font-size: var(--text-micro);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/** The warm light behind a prize. Used once per screen, at most. */
+@utility halo {
+  position: relative;
+}
+@utility halo-gold {
+  background-image: radial-gradient(90% 70% at 50% 0%, rgb(245 196 81 / 0.16) 0%, transparent 70%);
+}
+
+/**
+ * A ticket: a card with two punched notches on its long edges. Real geometry
+ * via mask, so it works on any background and needs no image.
+ */
+@utility ticket {
+  --notch: 13px;
+  -webkit-mask-image:
+    radial-gradient(var(--notch) at 0 var(--notch-y, 50%), transparent 99%, #000 100%),
+    radial-gradient(var(--notch) at 100% var(--notch-y, 50%), transparent 99%, #000 100%);
+  -webkit-mask-composite: source-in;
+  mask-image:
+    radial-gradient(var(--notch) at 0 var(--notch-y, 50%), transparent 99%, #000 100%),
+    radial-gradient(var(--notch) at 100% var(--notch-y, 50%), transparent 99%, #000 100%);
+  mask-composite: intersect;
+}
+
+/** Dashed perforation line, for the tear-off half of a ticket. */
+@utility perf {
+  background-image: repeating-linear-gradient(
+    to right, var(--color-line) 0 7px, transparent 7px 14px
+  );
+  height: 2px;
+}
+
+@keyframes pn-pop {
+  0%   { transform: scale(0.86); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes pn-rise {
+  0%   { transform: translateY(10px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+@keyframes pn-sheen {
+  0%   { transform: translateX(-120%) skewX(-18deg); }
+  100% { transform: translateX(320%) skewX(-18deg); }
+}
+@keyframes pn-pulse-ring {
+  0%   { box-shadow: 0 0 0 0 rgb(255 107 61 / 0.45); }
+  70%  { box-shadow: 0 0 0 12px rgb(255 107 61 / 0); }
+  100% { box-shadow: 0 0 0 0 rgb(255 107 61 / 0); }
+}
+/* Confetti. Runs once, for a confirmed win only. */
+@keyframes pn-fall {
+  0%   { transform: translateY(0) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(340px) rotate(540deg); opacity: 0; }
+}
+@keyframes pn-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-4px); }
+}
+
+@utility animate-pop  { animation: pn-pop var(--dur-2) var(--ease-pop) both; }
+@utility animate-rise { animation: pn-rise var(--dur-3) var(--ease-out) both; }
+@utility animate-float { animation: pn-float 3.5s ease-in-out infinite; }
+
+/** A slow sheen across a primary CTA. Once every few seconds, not a strobe. */
+@utility sheen {
+  position: relative;
+  overflow: hidden;
+}
+@utility sheen-run {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.22), transparent);
+  width: 40%;
+  animation: pn-sheen 4.5s var(--ease-out) infinite;
+}

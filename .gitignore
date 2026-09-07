@@ -1,0 +1,28 @@
+# Dependencies
+node_modules
+
+# Next.js
+.next
+out
+next-env.d.ts
+tsconfig.tsbuildinfo
+
+# Environment — NEVER commit. Contains the Supabase service-role key,
+# database password, AUTH_SECRET and every payment provider credential.
+.env
+.env.*
+!.env.example
+
+# Pinned TLS certificate authority. Environment-specific; download it per
+# environment from the Supabase dashboard rather than sharing one.
+certs/
+
+# Local database artefacts
+*.db
+*.db-journal
+
+# OS
+.DS_Store
+
+# Local scratch
+/tmp
