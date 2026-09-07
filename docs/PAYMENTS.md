@@ -150,3 +150,33 @@ return URLs are generated correctly.
 Write an adapter implementing `PaymentProviderAdapter`, register it in
 `src/server/payments/registry.ts`, add its presentation row, add its env vars
 here and to `.env.example`. Nothing above the registry changes.
+
+## Deploying to Vercel
+
+The build needs these environment variables. Set them in Vercel → Settings →
+Environment Variables, for **Production, Preview and Development**.
+
+**Required — the build fails or the app cannot serve without them:**
+
+| Variable | Notes |
+|---|---|
+| `DATABASE_URL` | The Supabase pooler URL. The password must be **percent-encoded** — an apostrophe is `%27`, a space is `%20`. |
+| `AUTH_SECRET` | `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"`. Rotating it signs everyone out. |
+| `SUPABASE_CA_CERT` | The PEM from Settings → Database → SSL Configuration. Serverless has no writable filesystem, so the cert cannot be a file. Without it the app **refuses to serve production traffic** — TLS would be unverified against a database holding financial records. |
+| `APP_URL` | e.g. `https://pricenova.com`. Used to build verification links and provider callback URLs, so a wrong value silently breaks webhooks. |
+| `NEXT_PUBLIC_SUPABASE_URL` | Safe to expose. |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Safe to expose. |
+| `SUPABASE_SERVICE_ROLE_KEY` | **Bypasses Row Level Security.** Server-side only — never give it a `NEXT_PUBLIC_` prefix. |
+
+**Optional.** Everything in `.env.example` beyond the above is a payment,
+email or SMS credential. Absent means that provider is off: checkout hides it
+and verification returns manual review. Nothing fakes a success.
+
+### Why the build needs `prisma generate`
+
+Prisma 7 generates its client through an install script. Vercel blocks
+unapproved dependency install scripts, so on a fresh clone `@prisma/client`
+exports nothing and the type check fails with *"has no exported member
+PrismaClient"*. Two guards now cover it: a `postinstall` script, and
+`prisma generate &&` at the head of `build`. The second runs regardless of
+install-script policy.

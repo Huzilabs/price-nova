@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
@@ -14,7 +14,8 @@
     "db:studio": "prisma studio",
     "db:seed:demo": "tsx --conditions=react-server prisma/seed-demo.ts",
     "db:reset": "prisma db push --force-reset && npm run db:seed",
-    "test:unit": "vitest run tests/money.test.ts"
+    "test:unit": "vitest run tests/money.test.ts",
+    "postinstall": "prisma generate"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -30,7 +31,6 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.7",
-    "@prisma/adapter-better-sqlite3": "^7.10.0",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^26.4.1",
     "@types/pg": "^8.23.1",
