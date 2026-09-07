@@ -59,6 +59,24 @@ node scripts/tour.mjs /tmp/shots      # logs in, visits every page, asserts no o
 node scripts/shot.mjs <url> <out.png> 390 1600   # one page at a device viewport
 ```
 
+### Known limitation: the integration tests need a nearby database
+
+`tests/ledger.test.ts`, `tests/payments.test.ts` and `tests/verify.test.ts` talk
+to the live Supabase pooler in **eu-west-1**. Each assertion is several
+sequential round-trips, so from a developer machine a single test can involve
+dozens. Steady-state latency is ~200 ms, but under load Supabase's session
+pooler intermittently stalls and returns
+`Unable to start a transaction in the given time`.
+
+The practical effect: running all three suites together produces flaky
+**timeouts** — a different test each run, never an assertion failure. Every
+test passes when the suites are run individually against an idle pooler.
+
+The fix is infrastructure, not the tests: point `DATABASE_URL` at a local
+Postgres (or a dedicated test database in the same region) before running
+`npm test`, and use the transaction pooler with a larger connection ceiling in
+CI. Raising the vitest timeouts only hides the stall.
+
 The ledger tests run against the real database — the guarantees under test
 (unique indexes, transaction isolation, row locks) live in Postgres, and a mock
 would only prove the mock agrees with itself. Rows are namespaced
