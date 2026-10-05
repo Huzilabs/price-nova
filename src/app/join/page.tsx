@@ -49,8 +49,14 @@ export default async function JoinPage({
     }),
   ]);
 
+  // Only a deposit the participant has actually submitted is "being checked".
+  // One they opened but never sent a TXID for must leave the form reachable.
   const pendingDeposit = await db.deposit.findFirst({
-    where: { userId: session.id, status: "PENDING" },
+    where: {
+      userId: session.id,
+      status: "PENDING",
+      OR: [{ payment: null }, { payment: { userSubmittedReference: { not: null } } }],
+    },
     include: { plan: true },
   });
 
@@ -81,14 +87,15 @@ export default async function JoinPage({
 
       {pendingDeposit ? (
         <Card className="mt-5 p-5">
-          <Badge tone="warn" dot>Awaiting confirmation</Badge>
+          <Badge tone="warn" dot>Pending</Badge>
           <h2 className="mt-3 font-display text-title font-extrabold text-hi">
-            Your deposit is being checked
+            Payment submitted successfully
           </h2>
           <p className="mt-2 text-sm leading-relaxed text-mid">
-            You submitted {formatMoney(pendingDeposit.amount)} for {pendingDeposit.plan.name}.
-            The moment our team confirms the payment your participation activates and you are
-            entered in the draw. Nothing else is needed from you.
+            Your payment is waiting for verification. You submitted{" "}
+            {formatMoney(pendingDeposit.amount)} for {pendingDeposit.plan.name}. The moment our
+            team confirms it, your participation activates and you are entered in the draw.
+            Nothing else is needed from you.
           </p>
           <Button href="/wallet" variant="solid" size="lg" fullWidth className="mt-4">
             View wallet

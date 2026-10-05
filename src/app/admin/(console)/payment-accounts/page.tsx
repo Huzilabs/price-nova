@@ -5,7 +5,7 @@ import { Card, EmptyState } from "@/components/primitives/Card";
 import { Badge } from "@/components/primitives/Badge";
 import { AccountEditor, NewAccountButton } from "@/components/admin/PaymentAccountEditor";
 
-export const metadata = { title: "Payment accounts" };
+export const metadata = { title: "Payment settings" };
 export const dynamic = "force-dynamic";
 
 /**
@@ -30,8 +30,8 @@ export default async function PaymentAccountsPage() {
   return (
     <>
       <PageHeader
-        title="Payment accounts"
-        description="What participants see at checkout. An account with no destination cannot be enabled."
+        title="Payment settings"
+        description="Receiving accounts participants see at checkout — wallet address, QR, network and instructions. An account with no destination cannot be enabled."
         action={<NewAccountButton />}
       />
 
@@ -72,7 +72,7 @@ export default async function PaymentAccountsPage() {
       {accounts.length === 0 ? (
         <EmptyState
           title="No payment accounts"
-          description="Add the Easypaisa, JazzCash, bank or crypto accounts participants should pay into."
+          description="Add the USDT BEP20 wallet (type Crypto, network BEP20), or any Easypaisa, JazzCash or bank account participants should pay into."
         />
       ) : (
         <div className="space-y-2">
@@ -93,6 +93,7 @@ export default async function PaymentAccountsPage() {
                 network: account.network ?? "",
                 walletAddress: account.walletAddress ?? "",
                 instructions: account.instructions ?? "",
+                qrCodeImage: account.qrCodeImage ?? "",
               }}
             />
           ))}

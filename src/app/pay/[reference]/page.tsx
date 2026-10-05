@@ -3,11 +3,12 @@ import { getSessionUser } from "@/lib/session";
 import { getByReference } from "@/server/payments/service";
 import { AppShell } from "@/components/shell/AppShell";
 import { Card } from "@/components/primitives/Card";
-import { Badge, StatusBadge } from "@/components/primitives/Badge";
+import { PaymentStatusBadge } from "@/components/primitives/Badge";
 import { Button } from "@/components/primitives/Button";
 import { CryptoCheckout } from "@/components/payments/CryptoCheckout";
 import { formatMoney } from "@/lib/money";
 import { formatDateTime } from "@/lib/format";
+import { methodLabel } from "@/lib/payment-status";
 
 export const metadata = { title: "Payment" };
 export const dynamic = "force-dynamic";
@@ -33,7 +34,8 @@ export default async function PaymentPage({
 
   const fiat = formatMoney(payment.expectedAmount);
   const isCrypto = Boolean(payment.receivingAddress && payment.cryptoAmount);
-  const settled = ["SUCCESS", "FAILED", "EXPIRED", "CANCELLED", "REFUNDED"].includes(payment.status);
+  const settled = ["SUCCESS", "FAILED", "REJECTED", "EXPIRED", "CANCELLED", "REFUNDED"].includes(payment.status);
+  const submitted = Boolean(payment.userSubmittedReference);
 
   return (
     <AppShell session={session}>
@@ -42,7 +44,7 @@ export default async function PaymentPage({
         {payment.plan.name}
       </h1>
       <p className="mt-1.5 text-sm text-mid">
-        {fiat} · {payment.method.replace(/_/g, " ")}
+        {fiat} · {methodLabel(payment.method)}
       </p>
 
       <div className="mt-5">
@@ -77,27 +79,34 @@ export default async function PaymentPage({
         ) : (
           <Card className="p-6">
             <div className="flex flex-wrap items-center gap-2">
-              <StatusBadge status={payment.status} />
-              {payment.provider === "MANUAL" && <Badge tone="neutral">Manual review</Badge>}
+              <PaymentStatusBadge payment={payment} />
             </div>
 
             <h2 className="font-display mt-3 text-title font-extrabold text-hi">
-              {payment.provider === "MANUAL"
-                ? "Waiting for our team"
-                : settled ? "Payment not completed" : "Waiting for the provider"}
+              {settled ? "Payment not completed"
+                : payment.provider === "MANUAL"
+                  ? (submitted ? "Payment submitted successfully" : "Waiting for your transaction ID")
+                  : "Waiting for the provider"}
             </h2>
 
             <p className="mt-2 text-sm leading-relaxed text-mid">
-              {payment.provider === "MANUAL"
-                ? "We're matching your transfer against the reference you gave us. Your participation activates as soon as it's confirmed."
-                : settled
-                  ? (payment.failureReason ?? "Nothing was credited. You can start a new payment.")
+              {settled
+                ? (payment.failureReason ?? "Nothing was credited. You can start a new payment.")
+                : payment.provider === "MANUAL"
+                  ? (submitted
+                      ? "Your payment is waiting for verification. Your participation activates as soon as our team confirms it."
+                      : "Send the payment, then submit the amount and transaction ID on the participate page.")
                   : "Complete the payment with your provider. This page updates on its own once they confirm — you don't need to tell us."}
             </p>
 
             {payment.checkoutUrl && !settled && (
               <Button href={payment.checkoutUrl} variant="primary" size="lg" fullWidth className="mt-4">
                 Continue payment
+              </Button>
+            )}
+            {payment.provider === "MANUAL" && !submitted && !settled && (
+              <Button href="/join" variant="primary" size="lg" fullWidth className="mt-4">
+                Submit transaction ID
               </Button>
             )}
             {settled && (

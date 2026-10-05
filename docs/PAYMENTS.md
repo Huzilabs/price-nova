@@ -1,5 +1,68 @@
 # Payments
 
+## Manual USDT (BEP20) — the live rail
+
+Until a gateway such as Cryptomus is integrated, participants pay in USDT on
+BNB Smart Chain to a wallet an admin publishes, and an admin approves each
+payment by hand. **Nothing is credited automatically.**
+
+```
+Admin → Payment settings: type Crypto, network BEP20, wallet address,
+                          optional QR upload, instructions, Enabled
+      ↓
+Participant → Participate → USDT (BEP20)
+  sees: amount in USDT, BEP20-only warning, QR, address + Copy
+  submits: Amount Sent + Transaction ID / TXID
+      ↓
+POST /api/payments/verify → ManualUSDTProvider
+  TXID normalised (trim, lowercase, 0x prefix, BscScan link → hash) and
+  format-checked; refused if any payment already holds it
+      ↓
+Payment MANUAL_REVIEW_REQUIRED (shown as PENDING) — wallet untouched
+      ↓
+Admin → Payments → Review: checks the TXID on BscScan against the
+receiving wallet recorded on the payment, then Approve or Reject
+      ↓
+Approve: one DB transaction — deposit row locked, ledger posts once under
+deposit:<id>:confirm, participation activated, payment → SUCCESS (APPROVED),
+admin id + timestamp recorded. Commission/bumper run after commit.
+Reject:  deposit + payment → REJECTED with a reason; the participant may pay again.
+```
+
+| What people see | Stored `PaymentStatus` |
+|---|---|
+| Awaiting TXID | `WAITING_FOR_PAYMENT` with no reference (not in the review queue) |
+| **Pending** | `MANUAL_REVIEW_REQUIRED` (and other open states) |
+| **Approved** | `SUCCESS` / `OVERPAID` |
+| **Rejected** | `REJECTED` / `FAILED` / `EXPIRED` / `REFUNDED` |
+| **Cancelled** | `CANCELLED` |
+
+The mapping lives in `src/lib/payment-status.ts`; no parallel enum exists.
+
+Guarantees:
+- **Approve twice → refused.** The action reports "already approved"; the
+  deposit row lock plus the ledger idempotency key mean concurrent approvals
+  produce one ledger transaction (covered by `tests/manual-usdt.test.ts`).
+- **One TXID, one payment.** Unique index on `(method, userSubmittedReference)`
+  and on `(cryptoNetwork, txHash)`, plus a pre-check across all methods. A
+  rejected TXID stays burned — a new payment needs a new transaction.
+- **No swapping under review.** Once submitted, the TXID cannot be changed.
+- **The address is snapshotted** on the payment when it opens, so changing the
+  published wallet later never changes what a reviewer checks against.
+- **The QR** defaults to one generated from the address (cannot disagree with
+  it). An uploaded QR is PNG/JPEG/WebP ≤ 300 KB, type checked by magic bytes;
+  SVG is refused.
+- A BEP20 address must be `0x` + 40 hex characters to save.
+- Admin-configured crypto accounts always route to manual methods
+  (`MANUAL_USDT_BEP20`, `MANUAL_CRYPTO`). The gateway methods (`USDT_BEP20`
+  etc.) are reserved for a hosted checkout that assigns its own addresses.
+
+### Adding Cryptomus later
+
+Write `providers/cryptomus.ts` implementing `PaymentProviderAdapter` for the
+gateway methods, register it, add its env vars. Manual USDT keeps working
+beside it. Do not let the gateway verify payments made to the manual address.
+
 ## How it works — manual transfer, server verification
 
 ```
@@ -84,7 +147,7 @@ honest outcome rather than a pretended one, and the admin page says so.
 | Easypaisa | `EASYPAISA` | `EASYPAISA_STORE_ID`, `EASYPAISA_HASH_KEY` |
 | Card | `CARD_GATEWAY` | `CARD_PROVIDER_SECRET_KEY`, `CARD_PROVIDER_WEBHOOK_SECRET` |
 | BTC / USDT TRC20 / USDT ERC20 | `CRYPTO_GATEWAY` | `CRYPTO_PROVIDER_API_KEY`, `CRYPTO_PROVIDER_IPN_SECRET` |
-| Bank transfer / crypto transfer | `MANUAL` | none — always available |
+| Bank transfer / crypto transfer / USDT BEP20 (manual) | `MANUAL` | none — always available |
 
 **None of the automated providers are configured yet.** Each is off until its
 variables are set: `createCharge` throws `ProviderUnconfiguredError`, checkout
@@ -160,10 +223,10 @@ Environment Variables, for **Production, Preview and Development**.
 
 | Variable | Notes |
 |---|---|
-| `DATABASE_URL` | The Supabase pooler URL. The password must be **percent-encoded** — an apostrophe is `%27`, a space is `%20`. |
+| `DATABASE_URL` | The Supabase pooler URL. The password must be **percent-encoded** — an apostrophe is `%27`, a space is `%20`. Any `sslmode` parameter is stripped in code. |
 | `AUTH_SECRET` | `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"`. Rotating it signs everyone out. |
 | `SUPABASE_CA_CERT` | The PEM from Settings → Database → SSL Configuration. Serverless has no writable filesystem, so the cert cannot be a file. Without it the app **refuses to serve production traffic** — TLS would be unverified against a database holding financial records. |
-| `APP_URL` | e.g. `https://pricenova.com`. Used to build verification links and provider callback URLs, so a wrong value silently breaks webhooks. |
+| `APP_URL` | e.g. `https://pricenova.com`, no trailing slash. Used to build verification links and provider callback URLs. Production throws rather than fall back to localhost. |
 | `NEXT_PUBLIC_SUPABASE_URL` | Safe to expose. |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Safe to expose. |
 | `SUPABASE_SERVICE_ROLE_KEY` | **Bypasses Row Level Security.** Server-side only — never give it a `NEXT_PUBLIC_` prefix. |
@@ -180,3 +243,10 @@ exports nothing and the type check fails with *"has no exported member
 PrismaClient"*. Two guards now cover it: a `postinstall` script, and
 `prisma generate &&` at the head of `build`. The second runs regardless of
 install-script policy.
+
+### Schema changes must reach the database before the deploy serves traffic
+
+There are no migration files; the schema is applied with `npm run db:push`
+(`prisma db push`). Run it against the production `DATABASE_URL` whenever
+`prisma/schema.prisma` changes, **before** promoting the deploy. Additive
+changes (new enum values, nullable columns) are safe to push ahead of the code.

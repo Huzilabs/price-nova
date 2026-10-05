@@ -175,11 +175,21 @@ export interface PaymentProviderAdapter {
    * API is available the correct answer is MANUAL_REVIEW_REQUIRED.
    */
   verifyTransaction(input: VerifyTransactionInput): Promise<VerifyResult>;
+
+  /**
+   * Optional: canonicalise a user-typed reference for this rail, or refuse it.
+   *
+   * Runs before the duplicate check, so two spellings of one transaction (a
+   * hash with and without `0x`, upper or lower case) collide rather than both
+   * being accepted. A refusal is a typo the user can fix — it never terminates
+   * the payment. Without this, the generic normaliser in verify.ts applies.
+   */
+  normaliseReference?(raw: string): { ok: true; value: string } | { ok: false; error: string };
 }
 
 /** Statuses from which no further transition is allowed. */
 export const TERMINAL_STATUSES: readonly PaymentStatus[] = [
-  "SUCCESS", "FAILED", "EXPIRED", "CANCELLED", "REFUNDED",
+  "SUCCESS", "FAILED", "REJECTED", "EXPIRED", "CANCELLED", "REFUNDED",
 ] as const;
 
 /** Statuses that mean "the user still has something to do". */

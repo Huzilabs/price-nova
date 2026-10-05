@@ -24,12 +24,14 @@ export type AccountValues = {
   network: string;
   walletAddress: string;
   instructions: string;
+  /** data: URI of an uploaded QR, or "" when checkout generates one. */
+  qrCodeImage: string;
 };
 
 const BLANK: AccountValues = {
   type: "EASYPAISA", label: "", enabled: false, autoVerify: false, sortOrder: 0,
   accountName: "", accountNumber: "", bankName: "", iban: "",
-  network: "", walletAddress: "", instructions: "",
+  network: "", walletAddress: "", instructions: "", qrCodeImage: "",
 };
 
 /** One row per configured account, with its edit sheet. */
@@ -50,8 +52,8 @@ export function AccountEditor({ account }: { account: AccountValues }) {
         <Badge tone={account.enabled ? "mint" : "neutral"} dot={account.enabled}>
           {account.enabled ? "Live" : "Disabled"}
         </Badge>
-        <Badge tone={account.autoVerify ? "info" : "neutral"}>
-          {account.autoVerify ? "Auto-verify" : "Manual review"}
+        <Badge tone={account.autoVerify && !isCrypto ? "info" : "neutral"}>
+          {account.autoVerify && !isCrypto ? "Auto-verify" : "Manual review"}
         </Badge>
 
         <span className="mono min-w-0 grow truncate text-sm text-mid">
@@ -123,13 +125,20 @@ function AccountForm({ initial, onDone }: { initial: AccountValues; onDone: () =
         {isCrypto ? (
           <>
             <Field label="Network" htmlFor="network" required
-                   hint="TRC20, ERC20, BEP20 or Bitcoin. Decides which chain we expect.">
-              <Input id="network" name="network" defaultValue={initial.network} placeholder="TRC20" />
+                   hint="Participants are warned to send on exactly this network.">
+              <Select id="network" name="network" defaultValue={initial.network || "BEP20"}>
+                <option value="BEP20">USDT BEP20 · BNB Smart Chain</option>
+                <option value="TRC20">TRC20 · Tron</option>
+                <option value="ERC20">ERC20 · Ethereum</option>
+                <option value="Bitcoin">Bitcoin</option>
+              </Select>
             </Field>
-            <Field label="Wallet address" htmlFor="walletAddress" required className="sm:col-span-2">
+            <Field label="Wallet address" htmlFor="walletAddress" required className="sm:col-span-2"
+                   hint="The public receiving address. Never a private key or seed phrase.">
               <Input id="walletAddress" name="walletAddress" defaultValue={initial.walletAddress}
-                     className="mono" placeholder="T… / bc1… / 0x…" />
+                     className="mono" placeholder="0x…" autoComplete="off" spellCheck={false} />
             </Field>
+            <QrField current={initial.qrCodeImage} />
           </>
         ) : (
           <>
@@ -172,7 +181,7 @@ function AccountForm({ initial, onDone }: { initial: AccountValues; onDone: () =
             <span className="block text-micro text-mid">Shown at checkout. Needs a destination first.</span>
           </span>
         </label>
-        <label className="flex items-start gap-2.5">
+        {!isCrypto && <label className="flex items-start gap-2.5">
           <input type="checkbox" name="autoVerify" defaultChecked={initial.autoVerify}
                  className="mt-0.5 accent-[var(--color-mint)]" />
           <span>
@@ -182,7 +191,7 @@ function AccountForm({ initial, onDone }: { initial: AccountValues; onDone: () =
               manual review regardless.
             </span>
           </span>
-        </label>
+        </label>}
       </div>
 
       {state.error && (
@@ -192,6 +201,57 @@ function AccountForm({ initial, onDone }: { initial: AccountValues; onDone: () =
       )}
       <Save />
     </form>
+  );
+}
+
+/**
+ * Optional uploaded QR. Without one, checkout draws a QR from the address
+ * itself — which cannot disagree with the address, so it is the default.
+ */
+function QrField({ current }: { current: string }) {
+  const [preview, setPreview] = React.useState(current);
+  const [remove, setRemove] = React.useState(false);
+
+  return (
+    <div className="sm:col-span-2">
+      <div className="mb-1.5 text-sm font-medium text-mid">QR code</div>
+      <div className="flex items-start gap-4 rounded-lg border border-line bg-surface-2 p-3.5">
+        <div className="flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white">
+          {preview && !remove ? (
+            // eslint-disable-next-line @next/next/no-img-element -- data: URI, nothing to optimise
+            <img src={preview} alt="Uploaded QR code" className="size-full object-contain" />
+          ) : (
+            <span className="px-2 text-center text-micro text-ink/60">Generated from address</span>
+          )}
+        </div>
+        <div className="min-w-0 grow space-y-2 text-sm">
+          <input
+            type="file" name="qrCodeImage" accept="image/png,image/jpeg,image/webp"
+            className="block w-full text-micro text-mid file:me-3 file:rounded-md file:border file:border-line file:bg-surface file:px-3 file:py-1.5 file:text-sm file:font-bold file:text-hi"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              setRemove(false);
+              const reader = new FileReader();
+              reader.onload = () => setPreview(String(reader.result));
+              reader.readAsDataURL(file);
+            }}
+          />
+          <p className="text-micro leading-relaxed text-faint">
+            PNG, JPEG or WebP, under 300 KB. It must encode the same address as above —
+            scan it with your phone before saving. Leave empty to generate one automatically.
+          </p>
+          {current && (
+            <label className="flex items-center gap-2 text-micro text-mid">
+              <input type="checkbox" name="removeQr" checked={remove}
+                     onChange={(e) => setRemove(e.target.checked)}
+                     className="accent-[var(--color-mint)]" />
+              Remove uploaded QR and use the generated one
+            </label>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 

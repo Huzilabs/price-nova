@@ -1,5 +1,6 @@
 import * as React from "react";
 import { cn } from "@/lib/cn";
+import { displayStatus, DISPLAY_LABEL, DISPLAY_TONE } from "@/lib/payment-status";
 
 type Tone = "neutral" | "ok" | "bad" | "warn" | "mint" | "gold" | "coral" | "info";
 
@@ -63,6 +64,24 @@ export function LevelBadge({ referrals, className }: { referrals: number; classN
     <Badge tone={tones[level]!} className={className}>
       <span aria-hidden="true" className="tracking-tighter">{"›".repeat(Math.max(1, level))}</span>
       {names[level]}
+    </Badge>
+  );
+}
+
+/**
+ * A payment's status in the four words people use — Pending, Approved,
+ * Rejected, Cancelled — rather than the provider lifecycle underneath.
+ */
+export function PaymentStatusBadge({
+  payment, className,
+}: {
+  payment: { status: string; userSubmittedReference?: string | null; provider?: string };
+  className?: string;
+}) {
+  const shown = displayStatus(payment);
+  return (
+    <Badge tone={DISPLAY_TONE[shown]} dot={shown === "PENDING"} className={className}>
+      {DISPLAY_LABEL[shown]}
     </Badge>
   );
 }

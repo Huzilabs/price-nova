@@ -59,6 +59,11 @@ export async function confirmDeposit(input: {
   adminRole: string;
 }) {
   const result = await db.$transaction(async (tx) => {
+    // Row lock first. Two admins pressing Approve at the same moment now
+    // queue here: the second waits, then reads CONFIRMED and replays, instead
+    // of both reading PENDING and colliding at the ledger's unique key.
+    await tx.$queryRaw`SELECT id FROM "Deposit" WHERE id = ${input.depositId} FOR UPDATE`;
+
     const deposit = await tx.deposit.findUniqueOrThrow({
       where: { id: input.depositId },
       include: { plan: true, user: true },
@@ -105,6 +110,18 @@ export async function confirmDeposit(input: {
         reviewedById: input.adminId,
         reviewedAt: now,
       },
+    });
+
+    // Close the payment in the same transaction. Without this a manually
+    // approved payment stayed in MANUAL_REVIEW_REQUIRED — non-terminal — and
+    // the participant could never start another deposit. Automated payments
+    // already reached SUCCESS/OVERPAID before calling here and are untouched.
+    await tx.payment.updateMany({
+      where: {
+        depositId: deposit.id,
+        status: { in: ["PENDING", "WAITING_FOR_PAYMENT", "VERIFYING", "MANUAL_REVIEW_REQUIRED"] },
+      },
+      data: { status: "SUCCESS", completedAt: now, failureReason: null },
     });
 
     await audit.record({
@@ -154,14 +171,30 @@ export async function rejectDeposit(input: {
     throw new DomainError(`Cannot reject a deposit that is ${deposit.status}`);
   }
 
-  const updated = await db.deposit.update({
-    where: { id: deposit.id },
-    data: {
-      status: "REJECTED",
-      rejectionReason: input.reason,
-      reviewedById: input.adminId,
-      reviewedAt: new Date(),
-    },
+  const now = new Date();
+  const updated = await db.$transaction(async (tx) => {
+    // Conditional, so a reject racing an approve cannot overwrite CONFIRMED.
+    const claimed = await tx.deposit.updateMany({
+      where: { id: deposit.id, status: "PENDING" },
+      data: {
+        status: "REJECTED",
+        rejectionReason: input.reason,
+        reviewedById: input.adminId,
+        reviewedAt: now,
+      },
+    });
+    if (claimed.count === 0) throw new DomainError("This deposit was already processed by someone else.");
+
+    // REJECTED is terminal, which frees the participant to start a new deposit.
+    await tx.payment.updateMany({
+      where: {
+        depositId: deposit.id,
+        status: { in: ["PENDING", "WAITING_FOR_PAYMENT", "VERIFYING", "MANUAL_REVIEW_REQUIRED", "UNDERPAID"] },
+      },
+      data: { status: "REJECTED", failureReason: input.reason, completedAt: now },
+    });
+
+    return tx.deposit.findUniqueOrThrow({ where: { id: deposit.id } });
   });
 
   await audit.record({

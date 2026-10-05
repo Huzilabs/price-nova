@@ -21,6 +21,8 @@ export type FlowAccount = {
   iban: string | null;
   network: string | null;
   instructions: string | null;
+  qrCodeImage: string | null;
+  isBep20: boolean;
   autoVerify: boolean;
   isCrypto: boolean;
 };
@@ -82,7 +84,20 @@ export function DepositFlow({
         const data = await response.json();
         if (cancelled) return;
         if (!response.ok) setError(data.error ?? "Could not start the deposit.");
-        else setPaymentId(data.paymentId);
+        else if (data.paymentAccountId && data.paymentAccountId !== account.id
+                 && accounts.some((a) => a.id === data.paymentAccountId)) {
+          // An open payment already exists for another method; show that one,
+          // so the address on screen is the one this payment expects.
+          setAccountId(data.paymentAccountId);
+        } else {
+          setPaymentId(data.paymentId);
+          if (data.submitted && data.status === "MANUAL_REVIEW_REQUIRED") {
+            setOutcome({
+              status: data.status, credited: false, retryable: false,
+              message: "Payment submitted successfully. Your payment is waiting for verification.",
+            });
+          }
+        }
       } catch {
         if (!cancelled) setError("Could not start the deposit. Check your connection.");
       } finally {
@@ -91,7 +106,12 @@ export function DepositFlow({
     })();
 
     return () => { cancelled = true; };
-  }, [account, drawId]);
+  }, [account, accounts, drawId]);
+
+  // Manual rails: a person checks, so the copy must never imply automation.
+  const manual = !account?.autoVerify;
+  const usdt = Boolean(account?.isBep20);
+  const sendLabel = usdt ? `${planAmountValue} USDT` : planAmountLabel;
 
   const copy = async (value: string, key: string) => {
     try {
@@ -159,12 +179,16 @@ export function DepositFlow({
 
   if (outcome && outcome.status === "MANUAL_REVIEW_REQUIRED") {
     return (
-      <Card className="p-6 text-center">
-        <Badge tone="warn" dot>Manual review</Badge>
+      <Card className="animate-pop p-6 text-center">
+        <Badge tone="warn" dot>Pending</Badge>
         <h2 className="font-display mt-3 text-h2 font-extrabold tracking-[-0.025em] text-hi">
-          Reference received
+          Payment submitted
         </h2>
         <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-mid">{outcome.message}</p>
+        <p className="mx-auto mt-2 max-w-sm text-micro leading-relaxed text-faint">
+          Your {planName} participation activates as soon as our team confirms the transaction.
+          Nothing is credited before that.
+        </p>
         <div className="mt-5 flex flex-col gap-2 sm:flex-row">
           <Button href="/wallet" variant="primary" size="lg" fullWidth>View wallet</Button>
           <Button href="/" variant="outline" size="lg" fullWidth>Back to draw</Button>
@@ -226,15 +250,41 @@ export function DepositFlow({
       {account && (
         <Card className="overflow-hidden p-0">
           <div className="border-b border-line p-5 text-center">
+            {usdt && (
+              <div className="mb-2 flex justify-center gap-1.5">
+                <Badge tone="mint">USDT</Badge>
+                <Badge tone="gold">BEP20</Badge>
+              </div>
+            )}
             <div className="tag text-faint">Send exactly</div>
-            <div className="prize mt-1 text-h1 text-gold">{planAmountLabel}</div>
+            <div className="prize mt-1 text-h1 text-gold">{sendLabel}</div>
+            {usdt && <div className="mt-1 text-micro text-faint">Required deposit for {planName}</div>}
           </div>
 
           <div className="space-y-4 p-5">
+            {usdt && (
+              <div role="note" className="flex gap-3 rounded-lg border border-coral/40 bg-coral-tint p-3.5">
+                <span aria-hidden="true" className="text-lg leading-none text-coral">⚠</span>
+                <div className="min-w-0 text-sm leading-relaxed">
+                  <div className="font-bold text-hi">BNB Smart Chain (BEP20) only</div>
+                  <p className="mt-0.5 text-mid">
+                    Send USDT only through the BNB Smart Chain (BEP20) network. USDT sent on
+                    any other network (TRC20, ERC20…) cannot be recovered.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {account.isCrypto && account.payTo && (
               <div className="flex justify-center">
                 <div className="rounded-xl bg-white p-2.5">
-                  <QrCode value={account.payTo} size={168} />
+                  {account.qrCodeImage ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- admin-uploaded data: URI
+                    <img src={account.qrCodeImage} alt={`QR code for ${account.payTo}`}
+                         width={168} height={168} className="size-[168px] object-contain" />
+                  ) : (
+                    <QrCode value={account.payTo} size={168} />
+                  )}
                 </div>
               </div>
             )}
@@ -274,11 +324,11 @@ export function DepositFlow({
                 </p>
               ) : (
                 <ol className="mt-1.5 space-y-1.5 text-sm text-mid">
-                  <li>1. Open your {account.label} app.</li>
-                  <li>2. Send exactly {planAmountLabel} to the {account.payToLabel.toLowerCase()} above.</li>
-                  <li>3. Copy the transaction reference from your receipt.</li>
+                  <li>1. Open your {usdt ? "crypto wallet" : `${account.label} app`}.</li>
+                  <li>2. Send exactly {sendLabel} to the {account.payToLabel.toLowerCase()} above{usdt ? " on BNB Smart Chain (BEP20)" : ""}.</li>
+                  <li>3. Copy the {usdt ? "transaction ID (TXID)" : "transaction reference"} from your {usdt ? "wallet" : "receipt"}.</li>
                   <li>4. Enter it below with the amount you sent.</li>
-                  <li>5. Press Verify payment.</li>
+                  <li>5. Press {manual ? "Submit Payment" : "Verify payment"}.</li>
                 </ol>
               )}
             </div>
@@ -291,18 +341,19 @@ export function DepositFlow({
         <div className="tag text-faint">Confirm your transfer</div>
 
         <div className="mt-3 grid gap-4 sm:grid-cols-2">
-          <Field label="Amount you sent" htmlFor="amount" required>
+          <Field label={usdt ? "Amount Sent (USDT)" : "Amount Sent"} htmlFor="amount" required>
             <MoneyInput id="amount" value={amount} required
                         onChange={(e) => setAmount(e.target.value)} />
           </Field>
           <Field
-            label={account?.isCrypto ? "Transaction hash" : "Transaction / reference ID"}
+            label={account?.isCrypto ? "Transaction ID / TXID" : "Transaction / reference ID"}
             htmlFor="reference"
             required
-            hint="Exactly as it appears on your receipt."
+            hint={usdt ? "Starts with 0x. Find it in your wallet's transaction details." : "Exactly as it appears on your receipt."}
           >
             <Input id="reference" value={reference} required className="mono"
-                   placeholder={account?.isCrypto ? "0x… or TXID" : "e.g. 1234567890"}
+                   autoComplete="off" spellCheck={false}
+                   placeholder={usdt ? "0x…" : account?.isCrypto ? "TXID" : "e.g. 1234567890"}
                    onChange={(e) => setReference(e.target.value)} />
           </Field>
         </div>
@@ -334,16 +385,17 @@ export function DepositFlow({
           disabled={!paymentId || !reference.trim() || verifying || starting}
           onClick={verify}
         >
-          {verifying ? "Checking with the provider"
+          {verifying ? (manual ? "Submitting" : "Checking with the provider")
             : starting ? "Preparing"
             : outcome?.retryable ? "Check again"
-            : "Verify payment"}
+            : manual ? "Submit Payment" : "Verify payment"}
         </Button>
 
         <p className="mt-3 text-micro leading-relaxed text-faint">
-          We confirm your payment with the provider before crediting anything. Entering a
-          reference does not by itself credit your account, and a reference can only ever
-          be used once.
+          {manual
+            ? "Our team checks every transaction before anything is credited. A transaction ID can only be used once."
+            : "We confirm your payment with the provider before crediting anything. Entering a reference does not by itself credit your account, and a reference can only ever be used once."}
+          {account?.isCrypto && " PriceNova will never ask for your private key, seed phrase or wallet password."}
         </p>
       </Card>
     </div>

@@ -1,6 +1,9 @@
 import "server-only";
 import type { PaymentAccountType, PaymentMethod } from "@prisma/client";
 import { db } from "@/lib/db";
+import { isBep20 } from "./networks";
+
+export { isBep20, isEvmAddress } from "./networks";
 
 /**
  * Receiving accounts.
@@ -19,13 +22,12 @@ export function methodForAccount(
     case "JAZZCASH": return "JAZZCASH";
     case "BANK_TRANSFER": return "MANUAL_BANK";
     case "CRYPTO": {
-      const n = (network ?? "").toUpperCase();
-      if (n.includes("TRC")) return "USDT_TRC20";
-      if (n.includes("ERC")) return "USDT_ERC20";
-      if (n.includes("BEP")) return "USDT_BEP20";
-      if (n.includes("BTC") || n.includes("BITCOIN")) return "BTC";
-      // An unrecognised network is treated as hand-verified rather than
-      // silently mapped to a chain we do not monitor.
+      // An address an admin publishes is, by definition, one no gateway is
+      // watching — gateways assign their own address per payment. So every
+      // configured crypto account is a manual rail, verified by a person.
+      // The gateway methods (USDT_BEP20, USDT_TRC20 …) are reserved for a
+      // hosted checkout such as Cryptomus, which never shows this address.
+      if (isBep20(network)) return "MANUAL_USDT_BEP20";
       return "MANUAL_CRYPTO";
     }
   }
@@ -67,6 +69,10 @@ export type PublicAccount = {
   iban: string | null;
   network: string | null;
   instructions: string | null;
+  /** Admin-uploaded QR (data: URI). Null means checkout generates one from payTo. */
+  qrCodeImage: string | null;
+  /** True for USDT on BNB Smart Chain — drives the network warning at checkout. */
+  isBep20: boolean;
   /** Whether a provider API will be asked, or a person will check. */
   autoVerify: boolean;
   isCrypto: boolean;
@@ -78,6 +84,7 @@ export function toPublicAccount(account: {
   bankName: string | null; iban: string | null;
   network: string | null; walletAddress: string | null;
   instructions: string | null; autoVerify: boolean;
+  qrCodeImage?: string | null;
 }): PublicAccount {
   const isCrypto = account.type === "CRYPTO";
   return {
@@ -94,7 +101,10 @@ export function toPublicAccount(account: {
     iban: account.iban,
     network: account.network,
     instructions: account.instructions,
-    autoVerify: account.autoVerify,
+    qrCodeImage: isCrypto ? (account.qrCodeImage ?? null) : null,
+    isBep20: isCrypto && isBep20(account.network),
+    // Manual rails are never auto-verified, whatever the flag says.
+    autoVerify: isCrypto ? false : account.autoVerify,
     isCrypto,
   };
 }

@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { getAccount, methodForAccount } from "@/server/payments/accounts";
 import { startPayment } from "@/server/payments/service";
 import { ProviderUnconfiguredError } from "@/server/payments/types";
+import { appUrl } from "@/lib/app-url";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,13 +44,20 @@ export async function POST(request: Request) {
       planId: plan.id,
       method: methodForAccount(account.type, account.network),
       fields: {},
-      origin: process.env.APP_URL ?? new URL(request.url).origin,
+      origin: appUrl(new URL(request.url).origin),
       paymentAccountId: account.id,
     });
     return NextResponse.json({
       paymentId: result.payment.id,
       reference: result.payment.reference,
       reused: result.reused,
+      // Lets a returning participant land on "waiting for verification"
+      // rather than a blank form for a payment they already submitted.
+      status: result.payment.status,
+      submitted: Boolean(result.payment.userSubmittedReference),
+      // A reused payment may be for a different account than the one just
+      // picked; the client must show where THIS payment is meant to go.
+      paymentAccountId: result.payment.paymentAccountId,
     });
   } catch (error) {
     if (error instanceof ProviderUnconfiguredError) {

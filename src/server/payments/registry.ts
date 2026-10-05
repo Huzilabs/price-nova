@@ -5,6 +5,7 @@ import { easypaisaProvider } from "./providers/easypaisa";
 import { cardProvider } from "./providers/card";
 import { cryptoProvider } from "./providers/crypto";
 import { manualProvider } from "./providers/manual";
+import { manualUsdtBep20Provider } from "./providers/manual-usdt";
 import { bankTransferProvider } from "./providers/bank";
 
 /**
@@ -15,7 +16,7 @@ import { bankTransferProvider } from "./providers/bank";
  */
 const ADAPTERS: readonly PaymentProviderAdapter[] = [
   jazzCashProvider, easypaisaProvider, bankTransferProvider,
-  cardProvider, cryptoProvider, manualProvider,
+  cardProvider, cryptoProvider, manualProvider, manualUsdtBep20Provider,
 ];
 
 export function adapterFor(method: PaymentMethod): PaymentProviderAdapter {
@@ -28,7 +29,10 @@ export function adapterByKey(key: PaymentProvider): PaymentProviderAdapter | nul
   return ADAPTERS.find((a) => a.key === key) ?? null;
 }
 
-export function allAdapters(): readonly PaymentProviderAdapter[] { return ADAPTERS; }
+/** One adapter per provider key — several manual rails share MANUAL. */
+export function allAdapters(): readonly PaymentProviderAdapter[] {
+  return ADAPTERS.filter((a, i) => ADAPTERS.findIndex((b) => b.key === a.key) === i);
+}
 
 /** Presentation metadata. The UI renders from this rather than a hardcoded list. */
 export type MethodDescriptor = {
@@ -54,6 +58,7 @@ const PRESENTATION: Record<PaymentMethod, Omit<MethodDescriptor, "method" | "pro
   USDT_BEP20:   { label: "USDT",      sublabel: "BEP20",             group: "crypto", automated: true },
   MANUAL_BANK:  { label: "Bank transfer",   sublabel: "Confirmed by our team", group: "manual", automated: false },
   MANUAL_CRYPTO:{ label: "Manual crypto",   sublabel: "You send, we verify on-chain", group: "manual", automated: false },
+  MANUAL_USDT_BEP20: { label: "USDT", sublabel: "BEP20 · BNB Smart Chain", group: "manual", automated: false },
 };
 
 /**

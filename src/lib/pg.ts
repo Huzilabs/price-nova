@@ -39,9 +39,25 @@ function certificateAuthority(): string | null {
   return null;
 }
 
+/**
+ * Drop `sslmode` from the URL. node-postgres lets it override the `ssl` option
+ * below, which silently replaces the pinned CA with the system trust store —
+ * and Supabase's private root is not in it. TLS is configured here instead.
+ */
+function withoutSslMode(url: string): string {
+  try {
+    const parsed = new URL(url);
+    parsed.searchParams.delete("sslmode");
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
+
 export function createPgAdapter(connectionString?: string): PrismaPg {
-  const url = connectionString ?? process.env.DATABASE_URL;
-  if (!url) throw new Error("DATABASE_URL is not set — copy .env.example to .env");
+  const raw = connectionString ?? process.env.DATABASE_URL;
+  if (!raw) throw new Error("DATABASE_URL is not set — copy .env.example to .env");
+  const url = withoutSslMode(raw);
 
   const ca = certificateAuthority();
   if (ca) {

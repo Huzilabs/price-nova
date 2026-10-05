@@ -618,6 +618,10 @@ enum PaymentMethod {
   /// transaction reference; automated methods must never do so.
   MANUAL_BANK
   MANUAL_CRYPTO
+  /// USDT on BNB Smart Chain, sent by hand to an admin-published address and
+  /// approved by an admin. Distinct from USDT_BEP20, which is reserved for a
+  /// gateway (e.g. Cryptomus) that assigns its own address and confirms itself.
+  MANUAL_USDT_BEP20
 }
 
 enum PaymentProvider {
@@ -953,6 +957,10 @@ model PaymentAccount {
   /// Crypto.
   network       String?
   walletAddress String?
+  /// Optional admin-uploaded QR image, as a data: URI (PNG/JPEG/WebP, small).
+  /// When absent, checkout renders a QR generated from walletAddress — which is
+  /// the safer default, since it cannot drift from the address shown.
+  qrCodeImage   String?
 
   /// Shown verbatim under the account. Markdown-free plain text.
   instructions String?

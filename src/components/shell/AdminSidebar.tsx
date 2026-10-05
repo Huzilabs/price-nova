@@ -18,7 +18,7 @@ import { cn } from "@/lib/cn";
 const GROUPS: Array<{ label: string; items: Array<{ href: string; label: string }> }> = [
   { label: "Operate", items: [
     { href: "/admin", label: "Overview" },
-    { href: "/admin/deposits", label: "Deposits" },
+    { href: "/admin/deposits", label: "Payments" },
     { href: "/admin/withdrawals", label: "Withdrawals" },
   ]},
   { label: "Rewards", items: [
@@ -34,7 +34,7 @@ const GROUPS: Array<{ label: string; items: Array<{ href: string; label: string 
     { href: "/admin/audit", label: "Audit log" },
   ]},
   { label: "Configure", items: [
-    { href: "/admin/payment-accounts", label: "Payment accounts" },
+    { href: "/admin/payment-accounts", label: "Payment settings" },
     { href: "/admin/plans", label: "Plans" },
     { href: "/admin/settings", label: "Settings" },
   ]},

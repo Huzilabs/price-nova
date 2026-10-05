@@ -117,10 +117,13 @@ describe("receiving accounts", () => {
     expect(accounts.methodForAccount("EASYPAISA")).toBe("EASYPAISA");
     expect(accounts.methodForAccount("JAZZCASH")).toBe("JAZZCASH");
     expect(accounts.methodForAccount("BANK_TRANSFER")).toBe("MANUAL_BANK");
-    expect(accounts.methodForAccount("CRYPTO", "TRC20")).toBe("USDT_TRC20");
-    expect(accounts.methodForAccount("CRYPTO", "ERC20")).toBe("USDT_ERC20");
-    expect(accounts.methodForAccount("CRYPTO", "Bitcoin")).toBe("BTC");
-    // An unknown chain must not be silently mapped to one we monitor.
+    // Admin-published addresses are never watched by a gateway, so every
+    // configured crypto account is a manual rail.
+    expect(accounts.methodForAccount("CRYPTO", "BEP20")).toBe("MANUAL_USDT_BEP20");
+    expect(accounts.methodForAccount("CRYPTO", "BNB Smart Chain")).toBe("MANUAL_USDT_BEP20");
+    expect(accounts.methodForAccount("CRYPTO", "TRC20")).toBe("MANUAL_CRYPTO");
+    expect(accounts.methodForAccount("CRYPTO", "ERC20")).toBe("MANUAL_CRYPTO");
+    expect(accounts.methodForAccount("CRYPTO", "Bitcoin")).toBe("MANUAL_CRYPTO");
     expect(accounts.methodForAccount("CRYPTO", "Solana")).toBe("MANUAL_CRYPTO");
   });
 

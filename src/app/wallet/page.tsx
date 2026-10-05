@@ -3,7 +3,8 @@ import { db } from "@/lib/db";
 import * as settings from "@/server/services/settings";
 import { AppShell } from "@/components/shell/AppShell";
 import { SectionHead, Card, EmptyState } from "@/components/primitives/Card";
-import { Badge, StatusBadge } from "@/components/primitives/Badge";
+import { Badge, StatusBadge, PaymentStatusBadge } from "@/components/primitives/Badge";
+import { methodLabel } from "@/lib/payment-status";
 import { Button } from "@/components/primitives/Button";
 import { ProgressBar } from "@/components/primitives/Progress";
 import { DepositPanel } from "@/components/wallet/DepositPanel";
@@ -38,7 +39,7 @@ export default async function WalletPage({
       include: {
         wallet: true,
         participations: { where: { status: "ACTIVE" }, include: { plan: true }, take: 1 },
-        deposits: { include: { plan: true }, orderBy: { createdAt: "desc" }, take: 5 },
+        deposits: { include: { plan: true, payment: true }, orderBy: { createdAt: "desc" }, take: 5 },
         withdrawals: { orderBy: { createdAt: "desc" }, take: 5 },
       },
     }),
@@ -168,10 +169,10 @@ export default async function WalletPage({
                 <div className="min-w-0 grow">
                   <div className="text-sm font-bold text-hi">Deposit · {d.plan.name}</div>
                   <div className="text-micro text-faint">
-                    {d.method.replace(/_/g, " ")} · {formatDate(d.createdAt)}
+                    {methodLabel(d.method)} · {formatDate(d.createdAt)}
                   </div>
                 </div>
-                <StatusBadge status={d.status} />
+                {d.payment ? <PaymentStatusBadge payment={d.payment} /> : <StatusBadge status={d.status} />}
                 <span className="num shrink-0 text-sm font-bold text-hi">{formatMoney(d.amount)}</span>
               </Card>
             ))}

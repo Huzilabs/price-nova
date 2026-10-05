@@ -3,6 +3,7 @@ import { createHash, randomBytes, randomInt } from "node:crypto";
 import { db } from "@/lib/db";
 import * as audit from "./audit";
 import { deliverEmail, deliverSms } from "./delivery";
+import { appUrl } from "@/lib/app-url";
 
 /**
  * Email and phone verification.
@@ -58,7 +59,7 @@ export async function sendEmailVerification(userId: string) {
     },
   });
 
-  const link = `${process.env.APP_URL ?? "http://localhost:3000"}/verify/email?token=${token}`;
+  const link = `${appUrl()}/verify/email?token=${token}`;
   await deliverEmail({
     to: user.email,
     subject: "Verify your PriceNova email",
@@ -207,7 +208,7 @@ export async function sendPasswordReset(email: string) {
   await deliverEmail({
     to: user.email,
     subject: "Reset your PriceNova password",
-    body: `Reset your password:\n\n${process.env.APP_URL ?? "http://localhost:3000"}/reset?token=${token}\n\nThe link expires in one hour. If you did not ask for this, ignore it.`,
+    body: `Reset your password:\n\n${appUrl()}/reset?token=${token}\n\nThe link expires in one hour. If you did not ask for this, ignore it.`,
   });
 
   return { sent: true as const };

@@ -54,9 +54,12 @@ export async function startPayment(input: {
     throw new ProviderUnconfiguredError(adapter.key, adapter.missingConfig());
   }
 
-  const [plan, user] = await Promise.all([
+  const [plan, user, account] = await Promise.all([
     db.plan.findUniqueOrThrow({ where: { id: input.planId } }),
     db.user.findUniqueOrThrow({ where: { id: input.userId } }),
+    input.paymentAccountId
+      ? db.paymentAccount.findUnique({ where: { id: input.paymentAccountId } })
+      : null,
   ]);
   if (plan.status !== "ACTIVE") throw new PaymentError(`${plan.name} is not open for participation.`);
 
@@ -91,6 +94,16 @@ export async function startPayment(input: {
       expectedAmount: plan.depositAmount,
       currency: "USD",
       paymentAccountId: input.paymentAccountId ?? null,
+      // Snapshot where the user was told to send money. If an admin later
+      // changes the published wallet, this payment still records the address
+      // it was actually made to — which is what the reviewer must check.
+      ...(account?.type === "CRYPTO"
+        ? {
+            receivingAddress: account.walletAddress,
+            cryptoNetwork: input.method === "MANUAL_USDT_BEP20" ? "BEP20" : account.network,
+            cryptoAsset: input.method === "MANUAL_USDT_BEP20" ? "USDT" : null,
+          }
+        : {}),
     },
   });
 
@@ -111,10 +124,10 @@ export async function startPayment(input: {
         status: charge.status,
         providerTxId: charge.providerTxId ?? null,
         checkoutUrl: charge.checkoutUrl ?? null,
-        cryptoAsset: charge.crypto?.asset ?? null,
-        cryptoNetwork: charge.crypto?.network ?? null,
+        cryptoAsset: charge.crypto?.asset ?? payment.cryptoAsset,
+        cryptoNetwork: charge.crypto?.network ?? payment.cryptoNetwork,
         cryptoAmount: charge.crypto?.amount ?? null,
-        receivingAddress: charge.crypto?.address ?? null,
+        receivingAddress: charge.crypto?.address ?? payment.receivingAddress,
         requiredConfirmations: charge.crypto?.requiredConfirmations ?? 0,
         expiresAt: charge.expiresAt ?? null,
         providerPayload: (charge.raw ?? Prisma.JsonNull) as Prisma.InputJsonValue,

@@ -39,12 +39,71 @@ function fail(error: unknown): ActionState {
 export async function confirmDeposit(_prev: ActionState, form: FormData): Promise<ActionState> {
   try {
     const { admin, role } = await actor();
-    await participation.confirmDeposit({
+    const { replayed } = await participation.confirmDeposit({
       depositId: String(form.get("depositId")), adminId: admin.id, adminRole: role,
     });
     revalidatePath("/admin/deposits");
     revalidatePath("/admin");
+    if (replayed) return { error: "Already approved. Nothing was credited a second time." };
     return { ok: "Deposit confirmed and participation activated." };
+  } catch (error) { return fail(error); }
+}
+
+// --- Payments (manual review) ---------------------------------------------
+
+/**
+ * Approve a manually reviewed payment.
+ *
+ * Crediting goes through `participation.confirmDeposit`, which locks the
+ * deposit row, posts one ledger transaction under `deposit:<id>:confirm`,
+ * activates participation and closes the payment — all in one database
+ * transaction. A second approval finds the deposit CONFIRMED and is refused
+ * here rather than reported as a success.
+ */
+export async function approvePayment(_prev: ActionState, form: FormData): Promise<ActionState> {
+  try {
+    const { admin, role } = await actor();
+    const paymentId = String(form.get("paymentId") ?? "");
+    const payment = await db.payment.findUnique({
+      where: { id: paymentId }, include: { deposit: true },
+    });
+    if (!payment) return { error: "Payment not found." };
+    if (payment.status === "SUCCESS" || payment.deposit.status === "CONFIRMED") {
+      return { error: "This payment is already approved. Nothing was credited again." };
+    }
+    if (payment.deposit.status === "REJECTED" || payment.status === "REJECTED" || payment.status === "CANCELLED") {
+      return { error: `This payment is ${payment.status === "CANCELLED" ? "cancelled" : "rejected"} and cannot be approved.` };
+    }
+    if (payment.provider === "MANUAL" && !payment.userSubmittedReference) {
+      return { error: "The participant has not submitted a transaction ID yet." };
+    }
+
+    const { replayed } = await participation.confirmDeposit({
+      depositId: payment.depositId, adminId: admin.id, adminRole: role,
+    });
+    revalidatePath("/admin/deposits");
+    revalidatePath(`/admin/deposits/${payment.id}`);
+    revalidatePath("/admin");
+    if (replayed) return { error: "This payment is already approved. Nothing was credited again." };
+    return { ok: "Payment approved. Wallet credited and participation activated." };
+  } catch (error) { return fail(error); }
+}
+
+export async function rejectPayment(_prev: ActionState, form: FormData): Promise<ActionState> {
+  try {
+    const { admin, role } = await actor();
+    const reason = String(form.get("reason") ?? "").trim();
+    if (!reason) return { error: "A rejection needs a reason." };
+    const paymentId = String(form.get("paymentId") ?? "");
+    const payment = await db.payment.findUnique({ where: { id: paymentId } });
+    if (!payment) return { error: "Payment not found." };
+
+    await participation.rejectDeposit({
+      depositId: payment.depositId, adminId: admin.id, adminRole: role, reason,
+    });
+    revalidatePath("/admin/deposits");
+    revalidatePath(`/admin/deposits/${payment.id}`);
+    return { ok: "Payment rejected. Nothing was credited." };
   } catch (error) { return fail(error); }
 }
 

@@ -76,7 +76,25 @@ export async function verifyPayment(input: {
     };
   }
 
-  const reference = normaliseReference(input.submittedReference);
+  // Submitted and waiting for a person? Then it stays exactly as submitted.
+  // Letting the user swap the reference while an admin is checking it would
+  // mean the admin could approve a hash other than the one they looked at.
+  if (payment.status === "MANUAL_REVIEW_REQUIRED" && payment.userSubmittedReference) {
+    return {
+      status: payment.status, credited: false, retryable: false,
+      message: "Payment submitted successfully. Your payment is waiting for verification.",
+    };
+  }
+
+  const adapter = adapterFor(payment.method);
+  let reference: string;
+  if (adapter.normaliseReference) {
+    const result = adapter.normaliseReference(input.submittedReference);
+    if (!result.ok) throw new VerifyError(result.error);
+    reference = result.value;
+  } else {
+    reference = normaliseReference(input.submittedReference);
+  }
   if (!reference) throw new VerifyError("Enter the transaction reference from your payment.");
 
   // --- Rate limiting --------------------------------------------------
@@ -99,10 +117,14 @@ export async function verifyPayment(input: {
   // --- Duplicate reference --------------------------------------------
   // Checked BEFORE calling the provider: a reference someone already used must
   // never be looked up on behalf of a second account.
+  // Also matched against on-chain hashes on ANY method, so one blockchain
+  // transaction cannot be claimed once manually and again through a gateway.
   const clash = await db.payment.findFirst({
     where: {
-      method: payment.method,
-      userSubmittedReference: reference,
+      OR: [
+        { method: payment.method, userSubmittedReference: reference },
+        { txHash: reference },
+      ],
       NOT: { id: payment.id },
     },
     select: { id: true, userId: true, status: true },
@@ -155,7 +177,6 @@ export async function verifyPayment(input: {
   }
 
   // --- Ask the provider ------------------------------------------------
-  const adapter = adapterFor(payment.method);
   let result: VerifyResult;
   try {
     result = await adapter.verifyTransaction({
