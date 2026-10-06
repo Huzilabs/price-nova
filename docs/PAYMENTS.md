@@ -223,7 +223,7 @@ Environment Variables, for **Production, Preview and Development**.
 
 | Variable | Notes |
 |---|---|
-| `DATABASE_URL` | The Supabase pooler URL. The password must be **percent-encoded** — an apostrophe is `%27`, a space is `%20`. Any `sslmode` parameter is stripped in code. |
+| `DATABASE_URL` | The Supabase **transaction** pooler URL (port **6543**). The session pooler (5432) allows only 15 clients in total and serverless instances exhaust it ("max clients reached in session mode"). Use 5432 locally for `db:push`. The password must be **percent-encoded** — an apostrophe is `%27`, a space is `%20`. Any `sslmode` parameter is stripped in code. |
 | `AUTH_SECRET` | `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"`. Rotating it signs everyone out. |
 | `SUPABASE_CA_CERT` | The PEM from Settings → Database → SSL Configuration. Serverless has no writable filesystem, so the cert cannot be a file. Without it the app **refuses to serve production traffic** — TLS would be unverified against a database holding financial records. |
 | `APP_URL` | e.g. `https://pricenova.com`, no trailing slash. Used to build verification links and provider callback URLs. Production throws rather than fall back to localhost. |

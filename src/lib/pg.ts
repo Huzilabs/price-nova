@@ -54,6 +54,21 @@ function withoutSslMode(url: string): string {
   }
 }
 
+/**
+ * Per-instance pool limits. On Vercel every server instance has its own pool,
+ * so a default of 10 connections each quickly exceeds Supabase's pooler limit
+ * (15 in session mode). Small pools that release idle connections fast, plus
+ * the transaction pooler (port 6543) in production, keep the total bounded.
+ */
+function poolLimits() {
+  const max = Number(process.env.DATABASE_POOL_MAX ?? (process.env.NODE_ENV === "production" ? 3 : 10));
+  return {
+    max: Number.isFinite(max) && max > 0 ? Math.floor(max) : 3,
+    idleTimeoutMillis: 10_000,
+    connectionTimeoutMillis: 15_000,
+  };
+}
+
 export function createPgAdapter(connectionString?: string): PrismaPg {
   const raw = connectionString ?? process.env.DATABASE_URL;
   if (!raw) throw new Error("DATABASE_URL is not set — copy .env.example to .env");
@@ -61,7 +76,7 @@ export function createPgAdapter(connectionString?: string): PrismaPg {
 
   const ca = certificateAuthority();
   if (ca) {
-    return new PrismaPg({ connectionString: url, ssl: { ca, rejectUnauthorized: true } });
+    return new PrismaPg({ connectionString: url, ssl: { ca, rejectUnauthorized: true }, ...poolLimits() });
   }
 
   if (!warned) {
@@ -88,5 +103,5 @@ export function createPgAdapter(connectionString?: string): PrismaPg {
     );
   }
 
-  return new PrismaPg({ connectionString: url, ssl: { rejectUnauthorized: false } });
+  return new PrismaPg({ connectionString: url, ssl: { rejectUnauthorized: false }, ...poolLimits() });
 }
