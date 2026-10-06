@@ -11,6 +11,8 @@ import { DepositPanel } from "@/components/wallet/DepositPanel";
 import { WithdrawPanel } from "@/components/wallet/WithdrawPanel";
 import { getMovements } from "@/server/queries/activity";
 import { MovementRow } from "@/components/wallet/MovementRow";
+import { currentFeeBps } from "@/server/services/withdrawal";
+import { formatBps } from "@/lib/fees";
 import { formatMoney, splitMoney } from "@/lib/money";
 import { formatDayMonth, formatDate, daysUntil } from "@/lib/format";
 
@@ -33,7 +35,7 @@ export default async function WalletPage({
   const session = await requireUser();
   const { welcome } = await searchParams;
 
-  const [user, entries, windows, payoutMethods] = await Promise.all([
+  const [user, entries, windows, payoutMethods, feeBps] = await Promise.all([
     db.user.findUniqueOrThrow({
       where: { id: session.id },
       include: {
@@ -50,6 +52,7 @@ export default async function WalletPage({
     // Payout rails are not checkout rails: you can pay by card but you cannot
     // be paid out to one here, so withdrawals get their own list.
     settings.get<string[]>("payout.methods", ["USDT_TRC20", "USDT_ERC20", "EASYPAISA", "JAZZCASH"]),
+    currentFeeBps(),
   ]);
 
   const wallet = user.wallet;
@@ -120,6 +123,7 @@ export default async function WalletPage({
           windows={windows}
           methods={payoutMethods}
           anyOpen={anyWindowOpen}
+          feeBps={feeBps}
         />
       </div>
 
@@ -182,10 +186,14 @@ export default async function WalletPage({
                   <div className="text-sm font-bold text-hi">Withdrawal · {w.sourceKind}</div>
                   <div className="text-micro text-faint">
                     {w.method.replace(/_/g, " ")} · {formatDate(w.createdAt)}
+                    {w.feeAmount > 0n && <> · {formatBps(w.feeRateBps)} fee {formatMoney(w.feeAmount)}</>}
                   </div>
                 </div>
                 <StatusBadge status={w.status} />
-                <span className="num shrink-0 text-sm font-bold text-mid">{formatMoney(w.amount)}</span>
+                <span className="shrink-0 text-end">
+                  <span className="num block text-sm font-bold text-mid">{formatMoney(w.amount - w.feeAmount)}</span>
+                  {w.feeAmount > 0n && <span className="block text-micro text-faint">of {formatMoney(w.amount)}</span>}
+                </span>
               </Card>
             ))}
           </div>

@@ -243,7 +243,9 @@ describe("withdrawals", () => {
     });
 
     const original = await settings.get("withdrawal.windows.COMMISSION", []);
+    const originalFee = await settings.get("withdrawal.feeBps", 200);
     await settings.set("withdrawal.windows.COMMISSION", [{ startDay: 1, endDay: 31 }]);
+    await settings.set("withdrawal.feeBps", 200);
 
     try {
       const request = await withdrawals.requestWithdrawal({
@@ -256,6 +258,13 @@ describe("withdrawals", () => {
       let wallet = await db.wallet.findUniqueOrThrow({ where: { userId: user.id } });
       expect(wallet.available).toBe(3000n);
       expect(wallet.pending).toBe(2000n);
+
+      // 2% of $20.00, snapshotted on the request.
+      expect(request.feeRateBps).toBe(200);
+      expect(request.feeAmount).toBe(40n);
+
+      // A later rate change must not touch a request already made.
+      await settings.set("withdrawal.feeBps", 500);
 
       await expect(
         withdrawals.requestWithdrawal({
@@ -273,14 +282,31 @@ describe("withdrawals", () => {
       wallet = await db.wallet.findUniqueOrThrow({ where: { userId: user.id } });
       expect(wallet.available).toBe(3000n);
       expect(wallet.pending).toBe(0n);
-      expect(wallet.lifetimeWithdrawn).toBe(2000n);
+      // What the user actually received: $20.00 minus the $0.40 fee.
+      expect(wallet.lifetimeWithdrawn).toBe(1960n);
 
-      const payouts = await db.ledgerTransaction.count({
-        where: { referenceType: "withdrawal:payout", referenceId: request.id },
+      const payouts = await db.ledgerTransaction.findMany({
+        where: { referenceType: "withdrawal:payout", referenceId: request.id }, include: { entries: true },
       });
-      expect(payouts).toBe(1);
+      expect(payouts).toHaveLength(1);
+      expect(payouts[0]!.entries.every((e) => e.amount === 1960n)).toBe(true);
+
+      // Exactly one fee posting, to platform fee income, despite the double "Mark paid".
+      const fees = await db.ledgerTransaction.findMany({
+        where: { referenceType: "withdrawal:fee", referenceId: request.id },
+        include: { entries: { include: { account: true } } },
+      });
+      expect(fees).toHaveLength(1);
+      expect(fees[0]!.type).toBe("FEE");
+      const income = fees[0]!.entries.find((e) => e.account.kind === "FEE_INCOME");
+      expect(income?.direction).toBe("CREDIT");
+      expect(income?.amount).toBe(40n);
+
+      const paid = await db.withdrawal.findUniqueOrThrow({ where: { id: request.id } });
+      expect(paid.feeTxId).toBe(fees[0]!.id);
     } finally {
       await settings.set("withdrawal.windows.COMMISSION", original);
+      await settings.set("withdrawal.feeBps", originalFee);
     }
   });
 
@@ -312,6 +338,8 @@ describe("withdrawals", () => {
       expect(wallet.available).toBe(1000n);
       expect(wallet.pending).toBe(0n);
       expect(wallet.lifetimeWithdrawn).toBe(0n);
+      // A rejected request is charged no fee.
+      expect(await db.ledgerTransaction.count({ where: { referenceType: "withdrawal:fee", referenceId: request.id } })).toBe(0);
     } finally {
       await settings.set("withdrawal.windows.COMMISSION", original);
     }

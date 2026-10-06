@@ -8,6 +8,7 @@ import { ActionForm } from "@/components/admin/ActionForm";
 import { FilterTabs } from "@/components/admin/FilterTabs";
 import { moveWithdrawal } from "@/server/actions/admin";
 import { formatMoney } from "@/lib/money";
+import { formatBps } from "@/lib/fees";
 import { formatDateTime } from "@/lib/format";
 import * as settings from "@/server/services/settings";
 
@@ -86,7 +87,7 @@ export default async function WithdrawalsPage({
             <THead>
               <TR>
                 <TH>User</TH><TH>Source</TH><TH>Destination</TH><TH>Requested</TH>
-                <TH>Status</TH><TH align="right">Available</TH><TH align="right">Amount</TH><TH align="right">Action</TH>
+                <TH>Status</TH><TH align="right">Available</TH><TH align="right">Requested</TH><TH align="right">Fee</TH><TH align="right">Send</TH><TH align="right">Action</TH>
               </TR>
             </THead>
             <tbody>
@@ -111,7 +112,13 @@ export default async function WithdrawalsPage({
                     <TD className="num text-micro text-mid whitespace-nowrap">{formatDateTime(w.createdAt)}</TD>
                     <TD><StatusBadge status={w.status} /></TD>
                     <TD numeric className="text-mid">{formatMoney(available)}</TD>
-                    <TD numeric>{formatMoney(w.amount)}</TD>
+                    <TD numeric className="text-mid">{formatMoney(w.amount)}</TD>
+                    <TD numeric className="text-mid">
+                      {w.feeAmount > 0n
+                        ? <CellStack primary={`−${formatMoney(w.feeAmount)}`} secondary={formatBps(w.feeRateBps)} />
+                        : <span className="text-faint">—</span>}
+                    </TD>
+                    <TD numeric className="font-bold text-hi">{formatMoney(w.amount - w.feeAmount)}</TD>
                     <TD align="right">
                       <span className="flex items-center justify-end gap-1.5">
                         {next && (
@@ -123,8 +130,13 @@ export default async function WithdrawalsPage({
                             confirm={
                               next === "PAID" ? (
                                 <>
-                                  Confirm that <strong>{formatMoney(w.amount)}</strong> has been sent to{" "}
+                                  Confirm that <strong>{formatMoney(w.amount - w.feeAmount)}</strong> has been sent to{" "}
                                   <span className="num">{w.destination}</span> via {w.method.replace(/_/g, " ")}.
+                                  {w.feeAmount > 0n && (
+                                    <> That is the {formatMoney(w.amount)} requested minus the{" "}
+                                    {formatBps(w.feeRateBps)} withdrawal fee of {formatMoney(w.feeAmount)}, which is
+                                    recorded as platform fee income.</>
+                                  )}{" "}
                                   This consumes the reserved funds and reduces platform cash. It cannot be undone —
                                   a mistake requires a compensating adjustment.
                                 </>

@@ -5,6 +5,7 @@ import { describe, it, expect } from "vitest";
 import { normaliseBep20TxHash, manualUsdtBep20Provider } from "@/server/payments/providers/manual-usdt";
 import { isBep20, isEvmAddress } from "@/server/payments/networks";
 import { displayStatus, explorerUrl } from "@/lib/payment-status";
+import { withdrawalFee, formatBps } from "@/lib/fees";
 
 const HASH = "0x" + "ab".repeat(32);
 
@@ -68,5 +69,25 @@ describe("display status", () => {
   it("links BEP20 hashes to BscScan", () => {
     expect(explorerUrl("BEP20", HASH)).toBe(`https://bscscan.com/tx/${HASH}`);
     expect(explorerUrl(null, HASH)).toBeNull();
+  });
+});
+
+describe("withdrawal fee", () => {
+  it("takes 2% in cents, rounded half up", () => {
+    expect(withdrawalFee(2000n, 200)).toBe(40n);   // $20.00 -> $0.40
+    expect(withdrawalFee(100n, 200)).toBe(2n);     // $1.00  -> $0.02
+    expect(withdrawalFee(125n, 200)).toBe(3n);     // 2.5c rounds up
+    expect(withdrawalFee(124n, 200)).toBe(2n);     // 2.48c rounds down
+    expect(withdrawalFee(1_000_000n, 200)).toBe(20_000n);
+  });
+
+  it("charges nothing at a zero rate or on a non-positive amount", () => {
+    expect(withdrawalFee(5000n, 0)).toBe(0n);
+    expect(withdrawalFee(0n, 200)).toBe(0n);
+  });
+
+  it("formats the rate", () => {
+    expect(formatBps(200)).toBe("2%");
+    expect(formatBps(250)).toBe("2.5%");
   });
 });

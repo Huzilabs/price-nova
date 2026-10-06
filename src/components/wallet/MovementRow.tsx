@@ -27,7 +27,10 @@ export function MovementRow({ movement }: { movement: Movement }) {
 
       <div className="min-w-0 grow">
         <div className="truncate text-sm font-bold text-hi">
-          {MOVEMENT_LABELS[movement.type] ?? movement.type.replace(/_/g, " ")}
+          {/* Fees name themselves, e.g. "Withdrawal fee (2%)" — "Fee" alone says too little. */}
+          {movement.type === "FEE"
+            ? movement.description
+            : MOVEMENT_LABELS[movement.type] ?? movement.type.replace(/_/g, " ")}
         </div>
         <div className="truncate text-micro text-faint">
           {formatDate(movement.at)}

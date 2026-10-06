@@ -250,3 +250,21 @@ There are no migration files; the schema is applied with `npm run db:push`
 (`prisma db push`). Run it against the production `DATABASE_URL` whenever
 `prisma/schema.prisma` changes, **before** promoting the deploy. Additive
 changes (new enum values, nullable columns) are safe to push ahead of the code.
+
+## Withdrawal fee
+
+Every withdrawal, whatever its source (profit/prize, commission, bonus/bumper,
+accrual or principal), carries a fee set by the `withdrawal.feeBps` setting
+(basis points; **200 = 2%**, editable under Admin → Settings).
+
+- **Request:** the full amount is reserved (AVAILABLE → PENDING). The rate and
+  fee are snapshotted on the `Withdrawal`, so changing the setting never
+  alters a request already made. The form previews the fee and "You receive".
+- **Paid:** two ledger transactions, each idempotent —
+  `withdrawal:<id>:fee` (FEE: PENDING → `FEE_INCOME`) and
+  `withdrawal:<id>:payout` (PENDING → out of PLATFORM_CASH, for the net).
+  The admin's Withdrawals table shows **Send** = amount − fee.
+- **Rejected:** no fee; the full reserve returns to AVAILABLE.
+- `lifetimeWithdrawn` is what the user actually received (net).
+- Fee = round-half-up to the cent (`src/lib/fees.ts`). Requests made before
+  the fee existed have `feeRateBps = 0` and pay nothing.

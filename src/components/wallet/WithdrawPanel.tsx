@@ -8,19 +8,30 @@ import { Button } from "@/components/primitives/Button";
 import { Field, Input, MoneyInput, Select } from "@/components/primitives/Field";
 import { Badge } from "@/components/primitives/Badge";
 import { Sheet, Submit } from "./DepositPanel";
+import { formatMoney, parseMoney } from "@/lib/money";
+import { formatBps, withdrawalFee } from "@/lib/fees";
 
 export function WithdrawPanel({
-  available, availableMinor, windows, methods, anyOpen,
+  available, availableMinor, windows, methods, anyOpen, feeBps,
 }: {
   available: string;
   availableMinor: string;
   windows: Array<{ kind: string; open: boolean; reason: string }>;
   methods: string[];
   anyOpen: boolean;
+  /** Withdrawal fee in basis points (200 = 2%), from the server's setting. */
+  feeBps: number;
 }) {
-  const [state, action] = useActionState<WalletState, FormData>(requestWithdrawal, {});
+  const [state, action, submitting] = useActionState<WalletState, FormData>(requestWithdrawal, {});
   const [open, setOpen] = React.useState(false);
   const openKinds = windows.filter((w) => w.open);
+  const [amountText, setAmountText] = React.useState("");
+
+  // Live preview of the fee. The server recomputes it on submit; this only
+  // shows the participant the same arithmetic before they commit.
+  let gross: bigint | null = null;
+  try { gross = amountText.trim() ? parseMoney(amountText) : null; } catch { gross = null; }
+  const fee = gross != null && gross > 0n ? withdrawalFee(gross, feeBps) : null;
 
   React.useEffect(() => { if (state.ok) setOpen(false); }, [state.ok]);
 
@@ -52,7 +63,16 @@ export function WithdrawPanel({
 
       {open && (
         <Sheet title="Withdraw funds" onClose={() => setOpen(false)}>
-          <form action={action} className="space-y-4">
+          <form
+            className="space-y-4"
+            // Submitted by hand: React resets a form after an `action` completes,
+            // which wiped the destination address whenever a request was refused.
+            onSubmit={(e) => {
+              e.preventDefault();
+              const data = new FormData(e.currentTarget);
+              React.startTransition(() => action(data));
+            }}
+          >
             <div className="rounded-xl border border-line bg-surface-2 p-3.5 text-center">
               <div className="tag text-faint">Available</div>
               <div className="num mt-1 text-h2 font-extrabold text-hi">{available}</div>
@@ -70,8 +90,24 @@ export function WithdrawPanel({
             </Field>
 
             <Field label="Amount" htmlFor="amount" required>
-              <MoneyInput id="amount" name="amount" required placeholder="0.00" />
+              <MoneyInput id="amount" name="amount" required placeholder="0.00"
+                          value={amountText} onChange={(e) => setAmountText(e.target.value)} />
             </Field>
+
+            {feeBps > 0 && (
+              <dl className="divide-y divide-line-soft rounded-xl border border-line text-sm">
+                <div className="flex items-center justify-between gap-3 px-3.5 py-2.5">
+                  <dt className="text-mid">Withdrawal fee ({formatBps(feeBps)})</dt>
+                  <dd className="num text-mid">{fee != null ? `−${formatMoney(fee)}` : "—"}</dd>
+                </div>
+                <div className="flex items-center justify-between gap-3 px-3.5 py-2.5">
+                  <dt className="font-bold text-hi">You receive</dt>
+                  <dd className="num text-base font-extrabold text-mint">
+                    {gross != null && fee != null ? formatMoney(gross - fee) : "—"}
+                  </dd>
+                </div>
+              </dl>
+            )}
 
             <Field label="Send to" htmlFor="method" required>
               <Select id="method" name="method" required defaultValue={methods[0] ?? ""}>
@@ -91,6 +127,7 @@ export function WithdrawPanel({
               <p className="mt-2 text-sm leading-relaxed text-mid">
                 The amount leaves your available balance the moment you request it, so it
                 cannot be spent twice while our team reviews the payout.
+                {feeBps > 0 && ` A ${formatBps(feeBps)} fee applies to every withdrawal and is only charged when it is paid — a rejected request is returned in full.`}
               </p>
             </div>
 
@@ -99,7 +136,7 @@ export function WithdrawPanel({
                 {state.error}
               </p>
             )}
-            <Submit label="Request withdrawal" />
+            <Submit label="Request withdrawal" pending={submitting} />
           </form>
         </Sheet>
       )}

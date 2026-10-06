@@ -5,6 +5,8 @@ import * as ledger from "./ledger";
 import * as audit from "./audit";
 import * as notify from "./notification";
 import * as settings from "./settings";
+import { formatMoney } from "@/lib/money";
+import { DEFAULT_WITHDRAWAL_FEE_BPS, formatBps, withdrawalFee } from "@/lib/fees";
 
 /**
  * Withdrawals — rules (ii), (v), (ix), (x).
@@ -13,8 +15,21 @@ import * as settings from "./settings";
  * checking the balance again at payout. Without the reserve, a user can queue
  * three withdrawals against one balance and the third one to be approved
  * overdraws the platform. Rejection returns the reserve; payout consumes it.
+ *
+ * Fee: every withdrawal, whatever its source, carries the `withdrawal.feeBps`
+ * fee (2% by default). The full amount is reserved; at payout the fee posts
+ * to FEE_INCOME as its own transaction and the user receives the rest. A
+ * rejected request is charged nothing.
  */
 export class WithdrawalError extends Error {}
+
+/** Current withdrawal fee rate, in basis points. */
+export async function currentFeeBps(): Promise<number> {
+  const raw = Number(await settings.get<number | string>("withdrawal.feeBps", DEFAULT_WITHDRAWAL_FEE_BPS));
+  // A malformed setting must not silently make withdrawals free or confiscatory.
+  if (!Number.isFinite(raw) || raw < 0 || raw > 10_000) return DEFAULT_WITHDRAWAL_FEE_BPS;
+  return Math.round(raw);
+}
 
 export async function requestWithdrawal(input: {
   userId: string;
@@ -46,6 +61,10 @@ export async function requestWithdrawal(input: {
     }
   }
 
+  const feeRateBps = await currentFeeBps();
+  const feeAmount = withdrawalFee(input.amount, feeRateBps);
+  if (input.amount - feeAmount <= 0n) throw new WithdrawalError("Amount is too small to cover the withdrawal fee");
+
   return db.$transaction(async (tx) => {
     const wallet = await tx.wallet.findUnique({ where: { userId: input.userId } });
     if (!wallet || wallet.available < input.amount) {
@@ -60,6 +79,8 @@ export async function requestWithdrawal(input: {
         method: input.method,
         destination: input.destination,
         status: "PENDING_REVIEW",
+        feeRateBps,
+        feeAmount,
       },
     });
 
@@ -83,7 +104,9 @@ export async function requestWithdrawal(input: {
     await notify.notify({
       userId: input.userId, type: "WITHDRAWAL_REQUESTED",
       title: "Withdrawal requested",
-      body: "Your request is with our team for review.",
+      body: feeAmount > 0n
+        ? `Your request is with our team for review. A ${formatBps(feeRateBps)} withdrawal fee applies; you will receive ${formatMoney(input.amount - feeAmount)}.`
+        : "Your request is with our team for review.",
       linkPath: "/wallet",
     }, tx);
 
@@ -132,7 +155,27 @@ export async function transition(input: {
     };
 
     if (input.to === "PAID") {
-      // Money leaves: PENDING is consumed and platform cash goes down.
+      const fee = withdrawal.feeAmount;
+      const net = withdrawal.amount - fee;
+
+      // The fee, as its own line on the statement: it stays with the platform.
+      if (fee > 0n) {
+        const { transaction: feeTx } = await ledger.post({
+          type: "FEE",
+          description: `Withdrawal fee (${formatBps(withdrawal.feeRateBps)})`,
+          idempotencyKey: `withdrawal:${withdrawal.id}:fee`,
+          referenceType: "withdrawal:fee",
+          referenceId: withdrawal.id,
+          createdByAdminId: input.adminId,
+          postings: [
+            { kind: "USER_PENDING", userId: withdrawal.userId, direction: "DEBIT", amount: fee },
+            { kind: "FEE_INCOME", userId: null, direction: "CREDIT", amount: fee },
+          ],
+        }, tx);
+        data.feeTxId = feeTx.id;
+      }
+
+      // Money leaves: the rest of PENDING is consumed and platform cash goes down.
       const { transaction } = await ledger.post({
         type: "WITHDRAWAL",
         description: `Withdrawal paid — ${withdrawal.method}`,
@@ -141,8 +184,8 @@ export async function transition(input: {
         referenceId: withdrawal.id,
         createdByAdminId: input.adminId,
         postings: [
-          { kind: "USER_PENDING", userId: withdrawal.userId, direction: "DEBIT", amount: withdrawal.amount },
-          { kind: "PLATFORM_CASH", userId: null, direction: "CREDIT", amount: withdrawal.amount },
+          { kind: "USER_PENDING", userId: withdrawal.userId, direction: "DEBIT", amount: net },
+          { kind: "PLATFORM_CASH", userId: null, direction: "CREDIT", amount: net },
         ],
       }, tx);
       data.payoutTxId = transaction.id;
@@ -180,7 +223,9 @@ export async function transition(input: {
     const messages: Record<string, [string, string]> = {
       APPROVED: ["Withdrawal approved", "Your withdrawal has been approved and is queued for payment."],
       PROCESSING: ["Withdrawal processing", "Your payment is being sent."],
-      PAID: ["Withdrawal paid", "Your withdrawal has been paid."],
+      PAID: ["Withdrawal paid", withdrawal.feeAmount > 0n
+        ? `${formatMoney(withdrawal.amount - withdrawal.feeAmount)} has been sent (${formatMoney(withdrawal.amount)} minus the ${formatBps(withdrawal.feeRateBps)} withdrawal fee).`
+        : "Your withdrawal has been paid."],
       REJECTED: ["Withdrawal rejected", input.reason ?? "Your withdrawal was rejected."],
     };
     const [title, body] = messages[input.to]!;

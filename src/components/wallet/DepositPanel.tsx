@@ -74,8 +74,9 @@ export function Sheet({
   );
 }
 
-export function Submit({ label }: { label: string }) {
-  const { pending } = useFormStatus();
+export function Submit({ label, pending: pendingProp }: { label: string; pending?: boolean }) {
+  const status = useFormStatus();
+  const pending = pendingProp ?? status.pending;
   return (
     <Button type="submit" variant="primary" size="lg" fullWidth loading={pending}>
       {label}

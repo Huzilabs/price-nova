@@ -186,6 +186,13 @@ model Withdrawal {
   reserveTxId   String?  @unique
   /// Set when funds leave PENDING at payout time.
   payoutTxId    String?  @unique
+  /// Withdrawal fee, snapshotted at request so a later rate change never
+  /// alters a request already made. Basis points: 200 = 2%. The user receives
+  /// amount - feeAmount; the fee posts to FEE_INCOME at payout, and nothing is
+  /// charged if the request is rejected.
+  feeRateBps    Int      @default(0)
+  feeAmount     BigInt   @default(0)
+  feeTxId       String?  @unique
   reviewedById  String?
   reviewedAt    DateTime?
   paidAt        DateTime?
@@ -196,6 +203,7 @@ model Withdrawal {
   user     User               @relation(fields: [userId], references: [id])
   reserveTx LedgerTransaction? @relation("WithdrawalReserve", fields: [reserveTxId], references: [id])
   payoutTx  LedgerTransaction? @relation("WithdrawalPayout", fields: [payoutTxId], references: [id])
+  feeTx     LedgerTransaction? @relation("WithdrawalFee", fields: [feeTxId], references: [id])
 
   @@index([userId])
   @@index([status, createdAt])
@@ -246,6 +254,7 @@ model LedgerTransaction {
   deposit              Deposit?
   withdrawalReserve    Withdrawal?  @relation("WithdrawalReserve")
   withdrawalPayout     Withdrawal?  @relation("WithdrawalPayout")
+  withdrawalFee        Withdrawal?  @relation("WithdrawalFee")
   commission           Commission?
   prize                Prize?
   accrualPosting       AccrualPosting?
@@ -744,6 +753,8 @@ enum LedgerAccountKind {
   PRIZE_POOL
   COMMISSION_EXPENSE
   DEPOSIT_LIABILITY
+  /// Platform revenue from fees, e.g. the withdrawal fee. Credit-normal.
+  FEE_INCOME
 }
 
 enum LedgerTxType {

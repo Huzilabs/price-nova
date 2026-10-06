@@ -44,7 +44,7 @@ export type WithdrawalSource = (typeof WITHDRAWAL_SOURCE)[number];
 
 export const LEDGER_ACCOUNT_KIND = [
   "USER_AVAILABLE", "USER_LOCKED", "USER_PENDING",
-  "PLATFORM_CASH", "PRIZE_POOL", "COMMISSION_EXPENSE", "DEPOSIT_LIABILITY",
+  "PLATFORM_CASH", "PRIZE_POOL", "COMMISSION_EXPENSE", "DEPOSIT_LIABILITY", "FEE_INCOME",
 ] as const;
 export type LedgerAccountKind = (typeof LEDGER_ACCOUNT_KIND)[number];
 
