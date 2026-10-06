@@ -1,6 +1,7 @@
 import { EmptyState } from "@/components/primitives/Card";
 import type { LedgerTxType } from "@prisma/client";
 import { db } from "@/lib/db";
+import { DEPOSITS_NEEDING_REVIEW } from "@/lib/payment-status";
 import { verifyIntegrity } from "@/server/services/ledger";
 import { getMainDraw } from "@/server/services/draw";
 import { PageHeader } from "@/components/primitives/PageHeader";
@@ -32,7 +33,7 @@ export default async function AdminOverview() {
   ] = await Promise.all([
     db.user.count(),
     db.participation.count({ where: { status: "ACTIVE" } }),
-    db.deposit.count({ where: { status: "PENDING" } }),
+    db.deposit.count({ where: DEPOSITS_NEEDING_REVIEW }),
     db.withdrawal.count({ where: { status: { in: ["REQUESTED", "PENDING_REVIEW", "APPROVED", "PROCESSING"] } } }),
     db.deposit.aggregate({ where: { status: "CONFIRMED" }, _sum: { amount: true } }),
     db.withdrawal.aggregate({ where: { status: "PAID" }, _sum: { amount: true } }),

@@ -44,9 +44,11 @@ export default async function PaymentAccountsPage() {
                 {p.key.replace(/_/g, " ")}
               </Badge>
               <span className="text-mid">
-                {p.configured
-                  ? (p.sandbox ? "sandbox credentials" : "live credentials")
-                  : p.missing.length > 0 ? `missing ${p.missing.join(", ")}` : "manual only"}
+                {p.key === "MANUAL" || p.key === "BANK_TRANSFER"
+                  ? "no API — admin approval"
+                  : p.configured
+                    ? (p.sandbox ? "sandbox credentials" : "live credentials")
+                    : `missing ${p.missing.join(", ")}`}
               </span>
             </span>
           ))}

@@ -9,7 +9,7 @@ import { ActionForm } from "@/components/admin/ActionForm";
 import { approvePayment, rejectPayment } from "@/server/actions/admin";
 import { formatMoney } from "@/lib/money";
 import { formatDateTime } from "@/lib/format";
-import { explorerUrl, methodLabel } from "@/lib/payment-status";
+import { displayStatus, explorerUrl, methodLabel } from "@/lib/payment-status";
 
 export const metadata = { title: "Payment" };
 export const dynamic = "force-dynamic";
@@ -163,7 +163,7 @@ export default async function PaymentDetailPage({ params }: { params: Promise<{ 
                 value={`${formatDateTime(payment.deposit.reviewedAt)}${reviewer ? ` · ${reviewer.fullName}` : " · system"}`}
               />
             )}
-            {payment.failureReason && payment.status !== "SUCCESS" && (
+            {payment.failureReason && ["REJECTED", "CANCELLED"].includes(displayStatus(payment)) && (
               <Row term="Reason" value={payment.failureReason} />
             )}
           </dl>

@@ -1,3 +1,5 @@
+import type { Prisma } from "@prisma/client";
+
 /**
  * The four statuses people see for a payment.
  *
@@ -72,3 +74,18 @@ export function explorerUrl(network: string | null | undefined, txHash: string |
   if (n.includes("TRC")) return `https://tronscan.org/#/transaction/${txHash}`;
   return null;
 }
+
+/**
+ * Pending deposits that actually need an admin: legacy deposits with no
+ * payment, manual payments whose participant submitted a TXID, and gateway
+ * amount mismatches. A checkout opened but never submitted is excluded —
+ * there is nothing to review yet. Matches the "Needs review" tab.
+ */
+export const DEPOSITS_NEEDING_REVIEW: Prisma.DepositWhereInput = {
+  status: "PENDING",
+  OR: [
+    { payment: null },
+    { payment: { userSubmittedReference: { not: null } } },
+    { payment: { status: { in: ["UNDERPAID", "OVERPAID"] } } },
+  ],
+};

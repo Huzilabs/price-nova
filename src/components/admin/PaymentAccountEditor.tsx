@@ -95,7 +95,7 @@ export function NewAccountButton() {
 }
 
 function AccountForm({ initial, onDone }: { initial: AccountValues; onDone: () => void }) {
-  const [state, action] = useActionState<AccountState, FormData>(savePaymentAccount, {});
+  const [state, action, saving] = useActionState<AccountState, FormData>(savePaymentAccount, {});
   const [type, setType] = React.useState(initial.type);
 
   React.useEffect(() => { if (state.ok) onDone(); }, [state.ok, onDone]);
@@ -104,7 +104,17 @@ function AccountForm({ initial, onDone }: { initial: AccountValues; onDone: () =
   const isBank = type === "BANK_TRANSFER";
 
   return (
-    <form action={action} className="space-y-4">
+    <form
+      className="space-y-4"
+      // Submitted by hand rather than via the `action` prop: React resets a
+      // form after an action completes, which wiped everything the admin had
+      // typed whenever a save was refused (e.g. a mistyped wallet address).
+      onSubmit={(e) => {
+        e.preventDefault();
+        const data = new FormData(e.currentTarget);
+        React.startTransition(() => action(data));
+      }}
+    >
       {initial.id && <input type="hidden" name="id" value={initial.id} />}
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -199,7 +209,7 @@ function AccountForm({ initial, onDone }: { initial: AccountValues; onDone: () =
           {state.error}
         </p>
       )}
-      <Save />
+      <Save pending={saving} />
     </form>
   );
 }
@@ -264,7 +274,6 @@ function Toggle({ enabled }: { enabled: boolean }) {
   );
 }
 
-function Save() {
-  const { pending } = useFormStatus();
+function Save({ pending }: { pending: boolean }) {
   return <Button type="submit" variant="primary" size="lg" fullWidth loading={pending}>Save account</Button>;
 }

@@ -1,5 +1,6 @@
 import { requireAdmin } from "@/lib/guards";
 import { db } from "@/lib/db";
+import { DEPOSITS_NEEDING_REVIEW } from "@/lib/payment-status";
 import { AdminSidebar } from "@/components/shell/AdminSidebar";
 import { signOut } from "@/server/actions/auth";
 
@@ -15,7 +16,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const admin = await requireAdmin();
 
   const [pendingDeposits, pendingWithdrawals] = await Promise.all([
-    db.deposit.count({ where: { status: "PENDING" } }),
+    db.deposit.count({ where: DEPOSITS_NEEDING_REVIEW }),
     db.withdrawal.count({ where: { status: { in: ["REQUESTED", "PENDING_REVIEW", "APPROVED", "PROCESSING"] } } }),
   ]);
 
