@@ -12,13 +12,15 @@ try {
   // .env is optional when DATABASE_URL is already exported (CI, production).
 }
 
-const url = process.env.DATABASE_URL;
-if (!url) {
-  throw new Error("DATABASE_URL is not set — copy .env.example to .env");
-}
+// `prisma generate` (run on every install and build) only writes client code
+// and needs no database, so a missing URL must not fail it — that is what
+// broke a Vercel project with an empty DATABASE_URL. Commands that do touch the
+// database (db push, studio, seed) still fail clearly, as Prisma reports the
+// missing datasource itself.
+const url = process.env.DATABASE_URL?.trim();
 
 export default defineConfig({
   schema: path.join("prisma", "schema.prisma"),
-  datasource: { url },
+  ...(url ? { datasource: { url } } : {}),
   migrations: { seed: "tsx prisma/seed.ts" },
 });
