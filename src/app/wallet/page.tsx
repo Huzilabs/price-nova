@@ -124,6 +124,7 @@ export default async function WalletPage({
           methods={payoutMethods}
           anyOpen={anyWindowOpen}
           feeBps={feeBps}
+          verified={Boolean(user.emailVerifiedAt && user.phoneVerifiedAt)}
         />
       </div>
 

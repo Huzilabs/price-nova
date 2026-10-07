@@ -7,7 +7,7 @@ import { Avatar } from "@/components/reward/WinnerCard";
 import { VerifyEmailPanel, VerifyPhonePanel } from "@/components/account/VerifyPanels";
 import { ProfileForm, PasswordForm } from "@/components/account/ProfileForms";
 import { SignOutButton } from "@/components/account/SignOutButton";
-import { deliveryConfigured } from "@/server/services/delivery";
+import { emailConfigured, whatsappConfigured } from "@/server/services/delivery";
 import { formatDate } from "@/lib/format";
 
 export const metadata = { title: "Profile" };
@@ -59,15 +59,16 @@ export default async function ProfilePage({
         <span className="mono text-gold">{user.referralCode}</span>
       </p>
 
-      {!deliveryConfigured.email || !deliveryConfigured.sms ? (
+      {/* Developer hint only. In production an unconfigured channel just
+          reports "temporarily unavailable" — users never see env var names. */}
+      {process.env.NODE_ENV !== "production" && (!emailConfigured() || !whatsappConfigured()) ? (
         <Card tone="raised" className="mt-5 p-4">
           <div className="text-sm font-bold text-gold">Development mode</div>
           <p className="mt-1 text-sm leading-relaxed text-mid">
-            No {!deliveryConfigured.email && !deliveryConfigured.sms ? "email or SMS" : !deliveryConfigured.email ? "email" : "SMS"} provider
-            is configured, so messages are not actually delivered — the verification
-            link and OTP are printed to the server console instead. Set
-            <span className="mono"> EMAIL_PROVIDER_KEY</span> and
-            <span className="mono"> SMS_PROVIDER_KEY</span> to send them for real.
+            {!emailConfigured() && !whatsappConfigured() ? "Email and WhatsApp are" : !emailConfigured() ? "Email is" : "WhatsApp is"}{" "}
+            not configured, so the link or code is printed to the server console instead of sent.
+            Set <span className="mono">SMTP_USER</span>/<span className="mono">SMTP_PASS</span> and the{" "}
+            <span className="mono">WHATSAPP_*</span> variables to send for real.
           </p>
         </Card>
       ) : null}

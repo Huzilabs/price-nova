@@ -49,6 +49,9 @@ export function VerifyPhonePanel({ phone, verifiedAt }: { phone: string | null; 
   const [sendState, sendAction] = useActionState<AccountState, FormData>(requestPhoneOtp, {});
   const [codeState, codeAction] = useActionState<AccountState, FormData>(confirmPhoneOtp, {});
   const awaitingCode = Boolean(sendState.ok) && !codeState.ok;
+  // Controlled, because React resets a form after its action runs — the
+  // number vanished after "Send code", so "Resend" submitted an empty field.
+  const [number, setNumber] = React.useState(phone ?? "");
 
   return (
     <Card tone={verifiedAt ? "mint" : "default"} className="p-4">
@@ -63,9 +66,11 @@ export function VerifyPhonePanel({ phone, verifiedAt }: { phone: string | null; 
       {!verifiedAt && (
         <div className="mt-3 space-y-3">
           <form action={sendAction} className="flex items-end gap-2">
-            <Field label="Mobile number" htmlFor="phone" className="grow">
-              <Input id="phone" name="phone" type="tel" inputMode="tel"
-                     defaultValue={phone ?? ""} required placeholder="+92 300 1234567" />
+            <Field label="WhatsApp number" htmlFor="phone" className="grow"
+                   hint="We send a 6-digit code on WhatsApp.">
+              <Input id="phone" name="phone" type="tel" inputMode="tel" autoComplete="tel"
+                     value={number} onChange={(e) => setNumber(e.target.value)}
+                     required placeholder="0300 1234567" />
             </Field>
             <SendCode label={sendState.ok ? "Resend" : "Send code"} />
           </form>

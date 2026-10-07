@@ -6,6 +6,7 @@ import { normaliseBep20TxHash, manualUsdtBep20Provider } from "@/server/payments
 import { isBep20, isEvmAddress } from "@/server/payments/networks";
 import { displayStatus, explorerUrl } from "@/lib/payment-status";
 import { withdrawalFee, formatBps } from "@/lib/fees";
+import { normalisePhone } from "@/lib/phone";
 
 const HASH = "0x" + "ab".repeat(32);
 
@@ -89,5 +90,24 @@ describe("withdrawal fee", () => {
   it("formats the rate", () => {
     expect(formatBps(200)).toBe("2%");
     expect(formatBps(250)).toBe("2.5%");
+  });
+});
+
+describe("phone normalisation", () => {
+  it("puts every spelling of a Pakistani number in one E.164 form", () => {
+    for (const raw of ["03001234567", "0300 1234567", "0300-1234567", "+92 300 1234567", "923001234567", "00923001234567", "3001234567"]) {
+      expect(normalisePhone(raw)).toBe("+923001234567");
+    }
+  });
+
+  it("keeps foreign numbers that carry a country code", () => {
+    expect(normalisePhone("+44 7700 900123")).toBe("+447700900123");
+    expect(normalisePhone("+1 (415) 555-0100")).toBe("+14155550100");
+  });
+
+  it("refuses numbers it cannot place", () => {
+    for (const raw of ["", "12345", "0300123", "abc", "+0123456789", "7700900123"]) {
+      expect(normalisePhone(raw)).toBeNull();
+    }
   });
 });

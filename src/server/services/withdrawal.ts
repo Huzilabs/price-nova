@@ -40,6 +40,17 @@ export async function requestWithdrawal(input: {
 }) {
   if (input.amount <= 0n) throw new WithdrawalError("Amount must be positive");
 
+  // Payouts go only to verified owners. Checked here, server-side, so no
+  // client can skip it. Deposits and draws stay open to unverified users.
+  const owner = await db.user.findUniqueOrThrow({
+    where: { id: input.userId }, select: { emailVerifiedAt: true, phoneVerifiedAt: true },
+  });
+  if (!owner.emailVerifiedAt || !owner.phoneVerifiedAt) {
+    const missing = !owner.emailVerifiedAt && !owner.phoneVerifiedAt ? "email and phone number"
+      : !owner.emailVerifiedAt ? "email" : "phone number";
+    throw new WithdrawalError(`Verify your ${missing} before withdrawing. You can do it from your profile.`);
+  }
+
   const minimum = BigInt(await settings.get<string>("withdrawal.minimumAmount", "0"));
   if (input.amount < minimum) {
     throw new WithdrawalError(`Minimum withdrawal is ${Number(minimum) / 100} USD`);

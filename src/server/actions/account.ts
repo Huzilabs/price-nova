@@ -34,7 +34,7 @@ export async function requestPhoneOtp(_prev: AccountState, form: FormData): Prom
     const phone = String(form.get("phone") ?? "");
     const result = await verification.sendPhoneOtp(user.id, phone);
     revalidatePath("/profile");
-    return { ok: `Code sent to ${result.phone}. It expires in 10 minutes.` };
+    return { ok: `Code sent on WhatsApp to ${result.phone}. It expires in 10 minutes.` };
   } catch (error) { return fail(error); }
 }
 

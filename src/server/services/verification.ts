@@ -2,7 +2,8 @@ import "server-only";
 import { createHash, randomBytes, randomInt } from "node:crypto";
 import { db } from "@/lib/db";
 import * as audit from "./audit";
-import { deliverEmail, deliverSms } from "./delivery";
+import { deliverEmail, deliverPhoneCode } from "./delivery";
+import { normalisePhone } from "@/lib/phone";
 import { appUrl } from "@/lib/app-url";
 
 /**
@@ -63,7 +64,13 @@ export async function sendEmailVerification(userId: string) {
   await deliverEmail({
     to: user.email,
     subject: "Verify your PriceNova email",
-    body: `Confirm your email address to finish setting up your account:\n\n${link}\n\nThe link expires in 24 hours.`,
+    text: `Confirm your email address to finish setting up your account:\n\n${link}\n\nThe link expires in 24 hours.`,
+    html: emailHtml({
+      heading: "Confirm your email",
+      body: "Tap the button to confirm this is your email address. You need a verified email and phone number before you can withdraw.",
+      cta: "Verify email", link,
+      footer: "The link expires in 24 hours. If you did not create a PriceNova account, ignore this email.",
+    }),
   });
 
   return { sent: true as const };
@@ -100,8 +107,10 @@ export async function confirmEmail(token: string) {
 // ---------------------------------------------------------------------------
 
 export async function sendPhoneOtp(userId: string, phone: string) {
-  const normalised = phone.replace(/[^\d+]/g, "");
-  if (normalised.length < 7) throw new VerificationError("That phone number does not look right.");
+  const normalised = normalisePhone(phone);
+  if (!normalised) {
+    throw new VerificationError("That phone number does not look right. Use 03001234567 or include the country code, e.g. +44….");
+  }
 
   const taken = await db.user.findFirst({
     where: { phone: normalised, NOT: { id: userId } }, select: { id: true },
@@ -131,10 +140,7 @@ export async function sendPhoneOtp(userId: string, phone: string) {
     },
   });
 
-  await deliverSms({
-    to: normalised,
-    body: `${code} is your PriceNova verification code. It expires in ${OTP_TTL_MIN} minutes.`,
-  });
+  await deliverPhoneCode({ to: normalised, code });
 
   return { sent: true as const, phone: normalised };
 }
@@ -205,10 +211,17 @@ export async function sendPasswordReset(email: string) {
     },
   });
 
+  const link = `${appUrl()}/reset?token=${token}`;
   await deliverEmail({
     to: user.email,
     subject: "Reset your PriceNova password",
-    body: `Reset your password:\n\n${appUrl()}/reset?token=${token}\n\nThe link expires in one hour. If you did not ask for this, ignore it.`,
+    text: `Reset your password:\n\n${link}\n\nThe link expires in one hour. If you did not ask for this, ignore it.`,
+    html: emailHtml({
+      heading: "Reset your password",
+      body: "Someone asked to reset the password for your PriceNova account. Tap the button to choose a new one.",
+      cta: "Reset password", link,
+      footer: "The link expires in one hour. If you did not ask for this, ignore this email — your password stays the same.",
+    }),
   });
 
   return { sent: true as const };
@@ -232,4 +245,26 @@ export async function consumePasswordReset(token: string, newPasswordHash: strin
   });
 
   return { userId: record.userId };
+}
+
+// ---------------------------------------------------------------------------
+// Email template — inline styles only, since mail clients strip <style>.
+// ---------------------------------------------------------------------------
+
+function escape(value: string): string {
+  return value.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+}
+
+function emailHtml(input: { heading: string; body: string; cta: string; link: string; footer: string }): string {
+  const link = escape(input.link);
+  return `<!doctype html><html><body style="margin:0;background:#0b1210;font-family:Arial,Helvetica,sans-serif;color:#e8f0ec">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0b1210;padding:32px 16px"><tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#121c19;border:1px solid #23302b;border-radius:16px;padding:28px">
+<tr><td style="font-size:18px;font-weight:bold;color:#f5c451;padding-bottom:18px">PriceNova</td></tr>
+<tr><td style="font-size:22px;font-weight:bold;color:#ffffff;padding-bottom:10px">${escape(input.heading)}</td></tr>
+<tr><td style="font-size:15px;line-height:1.55;color:#b8c6bf;padding-bottom:22px">${escape(input.body)}</td></tr>
+<tr><td style="padding-bottom:22px"><a href="${link}" style="display:inline-block;background:#ff6b3d;color:#0b1210;font-weight:bold;font-size:15px;text-decoration:none;padding:13px 22px;border-radius:12px">${escape(input.cta)}</a></td></tr>
+<tr><td style="font-size:12px;line-height:1.5;color:#7d8c85;padding-bottom:6px">Or open this link:<br><a href="${link}" style="color:#5ee0a8;word-break:break-all">${link}</a></td></tr>
+<tr><td style="font-size:12px;line-height:1.5;color:#7d8c85;padding-top:14px;border-top:1px solid #23302b">${escape(input.footer)}</td></tr>
+</table></td></tr></table></body></html>`;
 }

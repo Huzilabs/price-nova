@@ -27,7 +27,8 @@ const email = (name: string) => `${name}.${Date.now()}${SUFFIX}`;
 let planId: string;
 let adminId: string;
 
-async function makeUser(name: string) {
+async function makeUser(name: string, opts: { verified?: boolean } = {}) {
+  const verified = opts.verified ?? true;
   return db.user.create({
     data: {
       email: email(name),
@@ -36,6 +37,7 @@ async function makeUser(name: string) {
       referralCode: `T-${Math.random().toString(36).slice(2, 9).toUpperCase()}`,
       status: "ACTIVE",
       wallet: { create: {} },
+      ...(verified ? { emailVerifiedAt: new Date(), phoneVerifiedAt: new Date() } : {}),
     },
   });
 }
@@ -343,6 +345,34 @@ describe("withdrawals", () => {
     } finally {
       await settings.set("withdrawal.windows.COMMISSION", original);
     }
+  });
+
+  it("refuses a withdrawal until email and phone are verified", async () => {
+    const user = await makeUser("Unverified", { verified: false });
+    await ledger.post({
+      type: "ADJUSTMENT",
+      description: "test funding",
+      idempotencyKey: `test:fund-unverified:${user.id}`,
+      postings: [
+        { kind: "PLATFORM_CASH", userId: null, direction: "DEBIT", amount: 1000n },
+        { kind: "USER_AVAILABLE", userId: user.id, direction: "CREDIT", amount: 1000n },
+      ],
+    });
+    const request = () => withdrawals.requestWithdrawal({
+      userId: user.id, amount: 500n, sourceKind: "BUMPER",
+      method: "EASYPAISA", destination: "03001234567",
+    });
+
+    await expect(request()).rejects.toThrow(/Verify your email and phone number/);
+    await db.user.update({ where: { id: user.id }, data: { emailVerifiedAt: new Date() } });
+    await expect(request()).rejects.toThrow(/Verify your phone number/);
+    await db.user.update({ where: { id: user.id }, data: { phoneVerifiedAt: new Date() } });
+    await expect(request()).resolves.toBeTruthy();
+
+    // Nothing was reserved by the refused attempts.
+    const wallet = await db.wallet.findUniqueOrThrow({ where: { userId: user.id } });
+    expect(wallet.available).toBe(500n);
+    expect(wallet.pending).toBe(500n);
   });
 
   it("refuses a withdrawal outside its window — rule (x)", async () => {

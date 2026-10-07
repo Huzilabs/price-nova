@@ -12,7 +12,7 @@ import { formatMoney, parseMoney } from "@/lib/money";
 import { formatBps, withdrawalFee } from "@/lib/fees";
 
 export function WithdrawPanel({
-  available, availableMinor, windows, methods, anyOpen, feeBps,
+  available, availableMinor, windows, methods, anyOpen, feeBps, verified,
 }: {
   available: string;
   availableMinor: string;
@@ -21,6 +21,8 @@ export function WithdrawPanel({
   anyOpen: boolean;
   /** Withdrawal fee in basis points (200 = 2%), from the server's setting. */
   feeBps: number;
+  /** Email and phone both verified — required to withdraw. */
+  verified: boolean;
 }) {
   const [state, action, submitting] = useActionState<WalletState, FormData>(requestWithdrawal, {});
   const [open, setOpen] = React.useState(false);
@@ -51,13 +53,24 @@ export function WithdrawPanel({
               ? `${available} ready to withdraw.`
               : "Withdrawal windows are closed right now."}
         </p>
-        <Button
-          variant="solid" size="lg" fullWidth className="mt-4"
-          onClick={() => setOpen(true)}
-          disabled={!hasFunds || !anyOpen}
-        >
-          {!hasFunds ? "No funds yet" : anyOpen ? "Withdraw" : "Window closed"}
-        </Button>
+        {hasFunds && !verified ? (
+          <>
+            <p className="mt-2 text-micro leading-relaxed text-gold">
+              Verify your email and phone number to withdraw.
+            </p>
+            <Button href="/profile" variant="solid" size="lg" fullWidth className="mt-3">
+              Verify to withdraw
+            </Button>
+          </>
+        ) : (
+          <Button
+            variant="solid" size="lg" fullWidth className="mt-4"
+            onClick={() => setOpen(true)}
+            disabled={!hasFunds || !anyOpen}
+          >
+            {!hasFunds ? "No funds yet" : anyOpen ? "Withdraw" : "Window closed"}
+          </Button>
+        )}
         {state.ok && <p className="mt-2 text-micro font-semibold text-mint">{state.ok}</p>}
       </Card>
 
