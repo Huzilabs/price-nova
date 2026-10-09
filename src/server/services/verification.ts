@@ -5,6 +5,7 @@ import * as audit from "./audit";
 import { deliverEmail, deliverPhoneCode } from "./delivery";
 import { normalisePhone } from "@/lib/phone";
 import { appUrl } from "@/lib/app-url";
+import * as settings from "./settings";
 
 /**
  * Email and phone verification.
@@ -30,6 +31,24 @@ const OTP_RATE_WINDOW_MIN = 15;
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 
 export class VerificationError extends Error {}
+
+/**
+ * Whether phone (WhatsApp) verification is part of the product right now.
+ * Off by default: email alone is required to withdraw until WhatsApp is set
+ * up. Admin -> Settings -> `verification.phoneRequired` turns it on, which both
+ * shows the phone step and makes it required.
+ */
+export async function phoneVerificationRequired(): Promise<boolean> {
+  return (await settings.get<boolean>("verification.phoneRequired", false)) === true;
+}
+
+/** The withdrawal rule, in one place: email always, phone when switched on. */
+export function verifiedForWithdrawal(
+  user: { emailVerifiedAt: Date | null; phoneVerifiedAt: Date | null },
+  phoneRequired: boolean,
+): boolean {
+  return Boolean(user.emailVerifiedAt) && (!phoneRequired || Boolean(user.phoneVerifiedAt));
+}
 
 // ---------------------------------------------------------------------------
 // Email
@@ -107,6 +126,9 @@ export async function confirmEmail(token: string) {
 // ---------------------------------------------------------------------------
 
 export async function sendPhoneOtp(userId: string, phone: string) {
+  if (!(await phoneVerificationRequired())) {
+    throw new VerificationError("Phone verification is not available yet.");
+  }
   const normalised = normalisePhone(phone);
   if (!normalised) {
     throw new VerificationError("That phone number does not look right. Use 03001234567 or include the country code, e.g. +44….");

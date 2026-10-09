@@ -5,6 +5,7 @@ import * as ledger from "./ledger";
 import * as audit from "./audit";
 import * as notify from "./notification";
 import * as settings from "./settings";
+import { phoneVerificationRequired, verifiedForWithdrawal } from "./verification";
 import { formatMoney } from "@/lib/money";
 import { DEFAULT_WITHDRAWAL_FEE_BPS, formatBps, withdrawalFee } from "@/lib/fees";
 
@@ -45,9 +46,11 @@ export async function requestWithdrawal(input: {
   const owner = await db.user.findUniqueOrThrow({
     where: { id: input.userId }, select: { emailVerifiedAt: true, phoneVerifiedAt: true },
   });
-  if (!owner.emailVerifiedAt || !owner.phoneVerifiedAt) {
-    const missing = !owner.emailVerifiedAt && !owner.phoneVerifiedAt ? "email and phone number"
-      : !owner.emailVerifiedAt ? "email" : "phone number";
+  const phoneRequired = await phoneVerificationRequired();
+  if (!verifiedForWithdrawal(owner, phoneRequired)) {
+    const emailMissing = !owner.emailVerifiedAt;
+    const phoneMissing = phoneRequired && !owner.phoneVerifiedAt;
+    const missing = emailMissing && phoneMissing ? "email and phone number" : emailMissing ? "email" : "phone number";
     throw new WithdrawalError(`Verify your ${missing} before withdrawing. You can do it from your profile.`);
   }
 

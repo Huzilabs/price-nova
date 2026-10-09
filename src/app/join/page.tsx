@@ -8,6 +8,7 @@ import { Badge } from "@/components/primitives/Badge";
 import { Button } from "@/components/primitives/Button";
 import { JoinForm } from "./JoinForm";
 import { publicAccounts } from "@/server/payments/accounts";
+import { phoneVerificationRequired } from "@/server/services/verification";
 import { formatMoney } from "@/lib/money";
 import { formatDayMonth } from "@/lib/format";
 
@@ -51,6 +52,8 @@ export default async function JoinPage({
 
   // Only a deposit the participant has actually submitted is "being checked".
   // One they opened but never sent a TXID for must leave the form reachable.
+  const phoneRequired = await phoneVerificationRequired();
+
   const pendingDeposit = await db.deposit.findFirst({
     where: {
       userId: session.id,
@@ -143,7 +146,7 @@ export default async function JoinPage({
             }))}
             accounts={methods}
             emailVerified={Boolean(user.emailVerifiedAt)}
-            phoneVerified={Boolean(user.phoneVerifiedAt)}
+            phoneVerified={phoneRequired ? Boolean(user.phoneVerifiedAt) : true}
           />
         </div>
       )}

@@ -12,7 +12,7 @@ import { formatMoney, parseMoney } from "@/lib/money";
 import { formatBps, withdrawalFee } from "@/lib/fees";
 
 export function WithdrawPanel({
-  available, availableMinor, windows, methods, anyOpen, feeBps, verified,
+  available, availableMinor, windows, methods, anyOpen, feeBps, verified, verifyWhat,
 }: {
   available: string;
   availableMinor: string;
@@ -21,8 +21,10 @@ export function WithdrawPanel({
   anyOpen: boolean;
   /** Withdrawal fee in basis points (200 = 2%), from the server's setting. */
   feeBps: number;
-  /** Email and phone both verified — required to withdraw. */
+  /** Verified enough to withdraw (email, plus phone when that is switched on). */
   verified: boolean;
+  /** What still needs verifying, for the prompt, e.g. "email". */
+  verifyWhat: string;
 }) {
   const [state, action, submitting] = useActionState<WalletState, FormData>(requestWithdrawal, {});
   const [open, setOpen] = React.useState(false);
@@ -56,7 +58,7 @@ export function WithdrawPanel({
         {hasFunds && !verified ? (
           <>
             <p className="mt-2 text-micro leading-relaxed text-gold">
-              Verify your email and phone number to withdraw.
+              Verify your {verifyWhat} to withdraw.
             </p>
             <Button href="/profile" variant="solid" size="lg" fullWidth className="mt-3">
               Verify to withdraw

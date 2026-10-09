@@ -12,6 +12,7 @@ import { WithdrawPanel } from "@/components/wallet/WithdrawPanel";
 import { getMovements } from "@/server/queries/activity";
 import { MovementRow } from "@/components/wallet/MovementRow";
 import { currentFeeBps } from "@/server/services/withdrawal";
+import { phoneVerificationRequired, verifiedForWithdrawal } from "@/server/services/verification";
 import { formatBps } from "@/lib/fees";
 import { formatMoney, splitMoney } from "@/lib/money";
 import { formatDayMonth, formatDate, daysUntil } from "@/lib/format";
@@ -35,7 +36,7 @@ export default async function WalletPage({
   const session = await requireUser();
   const { welcome } = await searchParams;
 
-  const [user, entries, windows, payoutMethods, feeBps] = await Promise.all([
+  const [user, entries, windows, payoutMethods, feeBps, phoneRequired] = await Promise.all([
     db.user.findUniqueOrThrow({
       where: { id: session.id },
       include: {
@@ -53,6 +54,7 @@ export default async function WalletPage({
     // be paid out to one here, so withdrawals get their own list.
     settings.get<string[]>("payout.methods", ["USDT_TRC20", "USDT_ERC20", "EASYPAISA", "JAZZCASH"]),
     currentFeeBps(),
+    phoneVerificationRequired(),
   ]);
 
   const wallet = user.wallet;
@@ -124,7 +126,8 @@ export default async function WalletPage({
           methods={payoutMethods}
           anyOpen={anyWindowOpen}
           feeBps={feeBps}
-          verified={Boolean(user.emailVerifiedAt && user.phoneVerifiedAt)}
+          verified={verifiedForWithdrawal(user, phoneRequired)}
+          verifyWhat={phoneRequired ? "email and phone number" : "email"}
         />
       </div>
 

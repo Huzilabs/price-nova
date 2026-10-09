@@ -8,6 +8,7 @@ import { VerifyEmailPanel, VerifyPhonePanel } from "@/components/account/VerifyP
 import { ProfileForm, PasswordForm } from "@/components/account/ProfileForms";
 import { SignOutButton } from "@/components/account/SignOutButton";
 import { emailConfigured, whatsappConfigured } from "@/server/services/delivery";
+import { phoneVerificationRequired, verifiedForWithdrawal } from "@/server/services/verification";
 import { formatDate } from "@/lib/format";
 
 export const metadata = { title: "Profile" };
@@ -26,7 +27,8 @@ export default async function ProfilePage({
     db.referral.count({ where: { referrerId: session.id, qualified: true } }),
   ]);
 
-  const bothVerified = Boolean(user.emailVerifiedAt && user.phoneVerifiedAt);
+  const phoneRequired = await phoneVerificationRequired();
+  const bothVerified = verifiedForWithdrawal(user, phoneRequired);
 
   return (
     <AppShell session={session}>
@@ -61,7 +63,7 @@ export default async function ProfilePage({
 
       {/* Developer hint only. In production an unconfigured channel just
           reports "temporarily unavailable" — users never see env var names. */}
-      {process.env.NODE_ENV !== "production" && (!emailConfigured() || !whatsappConfigured()) ? (
+      {process.env.NODE_ENV !== "production" && (!emailConfigured() || (phoneRequired && !whatsappConfigured())) ? (
         <Card tone="raised" className="mt-5 p-4">
           <div className="text-sm font-bold text-gold">Development mode</div>
           <p className="mt-1 text-sm leading-relaxed text-mid">
@@ -77,7 +79,9 @@ export default async function ProfilePage({
         <SectionHead kicker="Security" title="Verification" />
         <div className="space-y-3">
           <VerifyEmailPanel email={user.email} verifiedAt={user.emailVerifiedAt?.toISOString() ?? null} />
-          <VerifyPhonePanel phone={user.phone} verifiedAt={user.phoneVerifiedAt?.toISOString() ?? null} />
+          {phoneRequired && (
+            <VerifyPhonePanel phone={user.phone} verifiedAt={user.phoneVerifiedAt?.toISOString() ?? null} />
+          )}
         </div>
       </section>
 

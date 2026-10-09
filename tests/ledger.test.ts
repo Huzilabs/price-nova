@@ -347,32 +347,45 @@ describe("withdrawals", () => {
     }
   });
 
-  it("refuses a withdrawal until email and phone are verified", async () => {
-    const user = await makeUser("Unverified", { verified: false });
-    await ledger.post({
-      type: "ADJUSTMENT",
-      description: "test funding",
-      idempotencyKey: `test:fund-unverified:${user.id}`,
+  it("requires a verified email to withdraw, and the phone too once switched on", async () => {
+    const fund = async (userId: string, key: string) => ledger.post({
+      type: "ADJUSTMENT", description: "test funding", idempotencyKey: `test:${key}:${userId}`,
       postings: [
         { kind: "PLATFORM_CASH", userId: null, direction: "DEBIT", amount: 1000n },
-        { kind: "USER_AVAILABLE", userId: user.id, direction: "CREDIT", amount: 1000n },
+        { kind: "USER_AVAILABLE", userId, direction: "CREDIT", amount: 1000n },
       ],
     });
-    const request = () => withdrawals.requestWithdrawal({
-      userId: user.id, amount: 500n, sourceKind: "BUMPER",
-      method: "EASYPAISA", destination: "03001234567",
+    const request = (userId: string) => withdrawals.requestWithdrawal({
+      userId, amount: 500n, sourceKind: "BUMPER", method: "EASYPAISA", destination: "03001234567",
     });
+    const original = await settings.get("verification.phoneRequired", false);
 
-    await expect(request()).rejects.toThrow(/Verify your email and phone number/);
-    await db.user.update({ where: { id: user.id }, data: { emailVerifiedAt: new Date() } });
-    await expect(request()).rejects.toThrow(/Verify your phone number/);
-    await db.user.update({ where: { id: user.id }, data: { phoneVerifiedAt: new Date() } });
-    await expect(request()).resolves.toBeTruthy();
+    try {
+      // Default: email only.
+      await settings.set("verification.phoneRequired", false);
+      const emailOnly = await makeUser("EmailOnly", { verified: false });
+      await fund(emailOnly.id, "fund-email-only");
+      await expect(request(emailOnly.id)).rejects.toThrow(/Verify your email before/);
+      await db.user.update({ where: { id: emailOnly.id }, data: { emailVerifiedAt: new Date() } });
+      await expect(request(emailOnly.id)).resolves.toBeTruthy();
 
-    // Nothing was reserved by the refused attempts.
-    const wallet = await db.wallet.findUniqueOrThrow({ where: { userId: user.id } });
-    expect(wallet.available).toBe(500n);
-    expect(wallet.pending).toBe(500n);
+      // Switched on: email and phone.
+      await settings.set("verification.phoneRequired", true);
+      const both = await makeUser("EmailAndPhone", { verified: false });
+      await fund(both.id, "fund-both");
+      await expect(request(both.id)).rejects.toThrow(/Verify your email and phone number/);
+      await db.user.update({ where: { id: both.id }, data: { emailVerifiedAt: new Date() } });
+      await expect(request(both.id)).rejects.toThrow(/Verify your phone number/);
+      await db.user.update({ where: { id: both.id }, data: { phoneVerifiedAt: new Date() } });
+      await expect(request(both.id)).resolves.toBeTruthy();
+
+      // Refused attempts reserved nothing.
+      const wallet = await db.wallet.findUniqueOrThrow({ where: { userId: both.id } });
+      expect(wallet.available).toBe(500n);
+      expect(wallet.pending).toBe(500n);
+    } finally {
+      await settings.set("verification.phoneRequired", original);
+    }
   });
 
   it("refuses a withdrawal outside its window — rule (x)", async () => {

@@ -99,6 +99,7 @@ async function main() {
     ["withdrawal.windows.BUMPER", "ANY_TIME", "Rule (ix)."],
     ["withdrawal.windows.PRINCIPAL", "ANY_TIME_AFTER_LOCK", "Rule (ii): governed by the plan lock period."],
     ["withdrawal.minimumAmount", "100", "Minor units. Operational floor, not from the notes."],
+    ["verification.phoneRequired", false, "Phone (WhatsApp) verification. false = email only is required to withdraw and the phone step is hidden. Set true once WhatsApp is configured."],
     ["withdrawal.feeBps", 200, "Fee on every withdrawal (profit, commission, bonus, principal), in basis points: 200 = 2%. Charged at payout; a rejected request is charged nothing."],
     ["accrual.grants", [{ threshold: 1000, dailyAmount: "1000", holdDays: 30 }], "Rule (xiv): 1000 referrals accrue $10/day, withdrawable after a month."],
     ["payment.methods", ["USDT_TRC20", "USDT_BEP20", "EASYPAISA", "JAZZCASH"], "Rule (xii) plus the sketch-page margin note."],

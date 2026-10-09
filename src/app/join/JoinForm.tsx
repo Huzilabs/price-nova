@@ -86,7 +86,7 @@ export function JoinForm({
               ? "Your email and phone are not verified yet."
               : !emailVerified ? "Your email is not verified yet."
               : "Your phone is not verified yet."}{" "}
-            You need both verified before you can withdraw.
+            Verification is required before you can withdraw.
           </p>
           <Button href="/profile" variant="outline" size="md" className="mt-3">Verify now</Button>
         </Card>
