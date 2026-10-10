@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import {
   listPublicDraws, categorise, displayEntryCounts, viewerInDraw,
 } from "@/server/services/draw";
+import { entriesClosed } from "@/lib/draw-phase";
 import { AppShell } from "@/components/shell/AppShell";
 import { SectionHead, EmptyState } from "@/components/primitives/Card";
 import { DrawCard } from "@/components/draw/DrawCard";
@@ -86,6 +87,7 @@ export default async function DrawsPage() {
                     category={categorise(draw)}
                     isMain={draw.isMain === true}
                     inDraw={pending.has(draw.id)}
+                    closed={entriesClosed(draw)}
                   />
                 ))}
               </div>

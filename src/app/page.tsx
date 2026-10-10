@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getPublicHome, getMemberHome } from "@/server/queries/home";
 import { DrawHero, DrawHeroEmpty } from "@/components/draw/DrawHero";
 import { categorise, displayEntryCounts, viewerInDraw } from "@/server/services/draw";
+import { entriesClosed } from "@/lib/draw-phase";
 import { SectionHead, Card, EmptyState } from "@/components/primitives/Card";
 import { RewardCard, type RewardState } from "@/components/reward/RewardCard";
 import { WinnerCard } from "@/components/reward/WinnerCard";
@@ -63,6 +64,7 @@ export default async function HomePage() {
           entryCutoffAt={pub.draw.entryCutoffAt}
           participants={participants}
           pendingEntry={inMainDraw?.pending ?? false}
+          closed={entriesClosed(pub.draw)}
           myEntries={myEntries}
           isSignedIn={Boolean(session)}
           isParticipating={isParticipating}

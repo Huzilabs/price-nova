@@ -17,7 +17,7 @@ import type { DrawCategory } from "@/server/services/draw";
  */
 export function DrawCard({
   id, name, imageUrl, prize, tierCount, entries, myEntries,
-  startsAt, entryCutoffAt, drawAt, category, isMain, inDraw = false,
+  startsAt, entryCutoffAt, drawAt, category, isMain, inDraw = false, closed = false,
 }: {
   id: string;
   name: string;
@@ -33,10 +33,12 @@ export function DrawCard({
   isMain: boolean;
   /** Will be entered automatically when entries close. */
   inDraw?: boolean;
+  /** Entries have closed (by status or by the clock); count down to the draw instead. */
+  closed?: boolean;
 }) {
   const upcoming = category === "UPCOMING";
   const done = category === "COMPLETED";
-  const countdownTo = upcoming ? startsAt : entryCutoffAt;
+  const countdownTo = upcoming ? startsAt : closed ? drawAt : entryCutoffAt;
 
   return (
     <Card interactive={!done} className="flex flex-col overflow-hidden p-0">
@@ -76,7 +78,7 @@ export function DrawCard({
           ) : (
             <>
               <div className="tag mb-1.5 text-faint">
-                {upcoming ? "Opens in" : "Entries close in"}
+                {upcoming ? "Opens in" : closed ? "Entries closed · winners drawn in" : "Entries close in"}
               </div>
               <Countdown target={countdownTo} size="sm" />
             </>

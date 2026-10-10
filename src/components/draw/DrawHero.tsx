@@ -17,7 +17,7 @@ import { cn } from "@/lib/cn";
  */
 export function DrawHero({
   id, name, description, imageUrl, prize, startsAt, drawAt, entryCutoffAt,
-  participants, myEntries, isSignedIn, isParticipating, upcoming, pendingEntry = false,
+  participants, myEntries, isSignedIn, isParticipating, upcoming, pendingEntry = false, closed = false,
 }: {
   id: string;
   name: string;
@@ -34,6 +34,8 @@ export function DrawHero({
   upcoming: boolean;
   /** Entered automatically when entries close; no entry number yet. */
   pendingEntry?: boolean;
+  /** Entries have closed (by status or by the clock); count down to the draw instead. */
+  closed?: boolean;
 }) {
   return (
     <section className="relative overflow-hidden rounded-2xl border border-gold/25 bg-surface shadow-gold">
@@ -75,13 +77,15 @@ export function DrawHero({
 
         <div className="mt-7 flex flex-col items-center">
           <div className="tag mb-2.5 text-mid">
-            {upcoming ? "Opens in" : "Entries close in"}
+            {upcoming ? "Opens in" : closed ? "Entries closed · winners drawn in" : "Entries close in"}
           </div>
-          <Countdown target={upcoming ? startsAt : entryCutoffAt} size="lg" />
+          <Countdown target={upcoming ? startsAt : closed ? drawAt : entryCutoffAt} size="lg" />
           <p className="mt-3 text-sm text-mid">
             {upcoming
               ? `Opens ${formatDate(startsAt)}`
-              : `Entries close ${formatDayMonth(entryCutoffAt)} · drawn ${formatDayMonth(drawAt)}`}
+              : closed
+                ? `Drawn ${formatDayMonth(drawAt)}`
+                : `Entries close ${formatDayMonth(entryCutoffAt)} · drawn ${formatDayMonth(drawAt)}`}
           </p>
         </div>
 

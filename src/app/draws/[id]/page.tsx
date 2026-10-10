@@ -14,6 +14,7 @@ import { Ticket } from "@/components/primitives/Ticket";
 import { WinnerCard, publicName } from "@/components/reward/WinnerCard";
 import { formatMoney } from "@/lib/money";
 import { formatDate, formatDayMonth } from "@/lib/format";
+import { entriesClosed as isEntriesClosed } from "@/lib/draw-phase";
 
 export const dynamic = "force-dynamic";
 
@@ -56,7 +57,7 @@ export default async function DrawDetailPage({ params }: { params: Promise<{ id:
   const pool = draw.prizeTiers.reduce(
     (total, tier) => total + tier.prizeAmount * BigInt(tier.winnerCount), 0n,
   );
-  const entriesClosed = category !== "UPCOMING" && draw.entryCutoffAt <= new Date();
+  const entriesClosed = category !== "UPCOMING" && isEntriesClosed(draw);
   const hasWinners = draw.winners.length > 0;
 
   return (
