@@ -216,6 +216,30 @@ describe("manual USDT BEP20", () => {
     expect(next.id).not.toBe(payment.id);
   });
 
+  it("a JazzCash send-to-number account works without merchant credentials", async () => {
+    const saved = process.env.JAZZCASH_MERCHANT_ID;
+    delete process.env.JAZZCASH_MERCHANT_ID;
+    try {
+      const jazz = await db.paymentAccount.create({
+        data: { type: "JAZZCASH", label: "UTEST JazzCash", enabled: true, accountNumber: "03001234567" },
+      });
+      const user = await makeUser("jazz");
+      const { payment } = await service.startPayment({
+        userId: user.id, planId, method: "JAZZCASH", fields: {},
+        origin: "https://example.invalid", paymentAccountId: jazz.id,
+      });
+      expect(payment.status).toBe("WAITING_FOR_PAYMENT");
+
+      const outcome = await verify.verifyPayment({
+        userId: user.id, paymentId: payment.id, submittedReference: `JC${Date.now()}`, submittedMinor: planAmount,
+      });
+      expect(outcome.status).toBe("MANUAL_REVIEW_REQUIRED");
+      expect(outcome.credited).toBe(false);
+    } finally {
+      if (saved !== undefined) process.env.JAZZCASH_MERCHANT_ID = saved;
+    }
+  });
+
   it("leaves the books balanced", async () => {
     expect((await ledger.verifyIntegrity()).ok).toBe(true);
   });

@@ -41,6 +41,8 @@ export default async function PaymentsPage({
   const needsReview: Prisma.PaymentWhereInput = {
     OR: [
       { provider: "MANUAL", deposit: { status: "PENDING" }, userSubmittedReference: { not: null }, status: { in: OPEN } },
+      // JazzCash / Easypaisa accounts without auto-verify land here too.
+      { status: "MANUAL_REVIEW_REQUIRED", deposit: { status: "PENDING" } },
       { status: { in: ["UNDERPAID", "OVERPAID"] }, deposit: { status: "PENDING" } },
     ],
   };

@@ -5,7 +5,9 @@ import { db } from "@/lib/db";
 import * as participation from "@/server/services/participation";
 import * as notify from "@/server/services/notification";
 import { adapterFor, adapterByKey } from "./registry";
-import { TERMINAL_STATUSES, ProviderUnconfiguredError, type PaymentUpdate } from "./types";
+import {
+  TERMINAL_STATUSES, ProviderUnconfiguredError, type ChargeResult, type PaymentUpdate,
+} from "./types";
 
 /**
  * PaymentService — the only place a payment changes state.
@@ -50,7 +52,11 @@ export async function startPayment(input: {
   paymentAccountId?: string | null;
 }) {
   const adapter = adapterFor(input.method);
-  if (!adapter.isConfigured()) {
+  // An admin-published account means "send money here, then give us the
+  // reference". Nothing is charged through a gateway, so none needs merchant
+  // credentials — the reference is checked later by verifyTransaction().
+  const viaAccount = Boolean(input.paymentAccountId);
+  if (!viaAccount && !adapter.isConfigured()) {
     throw new ProviderUnconfiguredError(adapter.key, adapter.missingConfig());
   }
 
@@ -108,15 +114,17 @@ export async function startPayment(input: {
   });
 
   try {
-    const charge = await adapter.createCharge({
-      reference: ref,
-      amount: { minor: plan.depositAmount, currency: "USD" },
-      method: input.method,
-      user: { id: user.id, email: user.email, fullName: user.fullName, phone: user.phone },
-      returnUrl: `${input.origin}/pay/${ref}`,
-      webhookUrl: `${input.origin}/api/payments/webhook/${adapter.key.toLowerCase()}`,
-      fields: input.fields,
-    });
+    const charge: ChargeResult = viaAccount
+      ? { status: "WAITING_FOR_PAYMENT", expiresAt: null }
+      : await adapter.createCharge({
+          reference: ref,
+          amount: { minor: plan.depositAmount, currency: "USD" },
+          method: input.method,
+          user: { id: user.id, email: user.email, fullName: user.fullName, phone: user.phone },
+          returnUrl: `${input.origin}/pay/${ref}`,
+          webhookUrl: `${input.origin}/api/payments/webhook/${adapter.key.toLowerCase()}`,
+          fields: input.fields,
+        });
 
     payment = await db.payment.update({
       where: { id: payment.id },
