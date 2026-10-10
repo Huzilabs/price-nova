@@ -23,7 +23,7 @@ export async function requestEmailVerification(): Promise<AccountState> {
     return {
       ok: "alreadyVerified" in result
         ? "Your email is already verified."
-        : "Verification email sent. Check your inbox.",
+        : "Verification email sent. Check your inbox — if you don't see it, check your spam or junk folder.",
     };
   } catch (error) { return fail(error); }
 }
@@ -104,7 +104,7 @@ export async function changePassword(_prev: AccountState, form: FormData): Promi
 export async function requestPasswordReset(_prev: AccountState, form: FormData): Promise<AccountState> {
   try {
     await verification.sendPasswordReset(String(form.get("email") ?? ""));
-    return { ok: "If that address has an account, a reset link is on its way." };
+    return { ok: "If that address has an account, a reset link is on its way. If you don't see it, check your spam or junk folder." };
   } catch (error) { return fail(error); }
 }
 

@@ -28,7 +28,8 @@ export function VerifyEmailPanel({ email, verifiedAt }: { email: string; verifie
       {!verifiedAt && (
         <>
           <p className="mt-2.5 text-sm leading-relaxed text-mid">
-            We&rsquo;ll send a link. Opening it confirms the address.
+            We&rsquo;ll send a link. Opening it confirms the address. If it doesn&rsquo;t
+            arrive within a few minutes, check your spam or junk folder.
           </p>
           <Button
             variant="outline" size="md" className="mt-3" loading={pending}
