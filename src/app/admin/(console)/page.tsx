@@ -10,6 +10,8 @@ import { Figure } from "@/components/primitives/Figure";
 import { Badge, StatusBadge } from "@/components/primitives/Badge";
 import { Button } from "@/components/primitives/Button";
 import { Table, TableWrap, THead, TH, TR, TD, CellStack } from "@/components/primitives/Table";
+import { ActionForm } from "@/components/admin/ActionForm";
+import { runPrincipalRelease } from "@/server/actions/admin";
 
 import { formatMoney } from "@/lib/money";
 import { formatDate, formatDateShort } from "@/lib/format";
@@ -23,6 +25,24 @@ async function sumOf(type: LedgerTxType): Promise<bigint> {
     _sum: { amount: true },
   });
   return result._sum.amount ?? 0n;
+}
+
+/** Matured principals not yet moved to AVAILABLE, and the next one coming up. */
+async function principalRelease() {
+  const now = new Date();
+  const matured = await db.participation.findMany({
+    where: { status: "ACTIVE", principalUnlocksAt: { lte: now } },
+    select: { id: true },
+  });
+  const released = await db.ledgerTransaction.count({
+    where: { idempotencyKey: { in: matured.map((p) => `participation:${p.id}:unlock`) } },
+  });
+  const next = await db.participation.findFirst({
+    where: { status: "ACTIVE", principalUnlocksAt: { gt: now } },
+    orderBy: { principalUnlocksAt: "asc" },
+    select: { principalUnlocksAt: true },
+  });
+  return { due: matured.length - released, next: next?.principalUnlocksAt ?? null };
 }
 
 export default async function AdminOverview() {
@@ -53,6 +73,7 @@ export default async function AdminOverview() {
   ]);
 
   const rewardsDistributed = drawTotal + bumperTotal;
+  const release = await principalRelease();
 
   return (
     <>
@@ -153,6 +174,25 @@ export default async function AdminOverview() {
           )}
         </Section>
       </div>
+
+      <Section
+        title="Principal release"
+        description="Runs automatically every day at 01:00 UTC. Use the button to run it now."
+        className="mt-2"
+      >
+        <div className="flex flex-wrap items-end gap-x-12 gap-y-4">
+          <Figure label="Due now" size="md" value={release.due.toLocaleString()} />
+          <Figure label="Next unlock" size="sm" value={release.next ? formatDate(release.next) : "—"} />
+          <ActionForm
+            action={runPrincipalRelease}
+            hidden={{}}
+            label="Release matured principal"
+            variant="solid"
+            size="md"
+            confirm="Every deposit whose lock period has ended moves from Locked to Available, and each participant is notified. Deposits already released are skipped."
+          />
+        </div>
+      </Section>
 
       <Section title="Main draw" className="mt-2">
         {!draw ? (

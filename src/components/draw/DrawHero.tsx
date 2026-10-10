@@ -134,7 +134,7 @@ export function DrawHero({
       <div className="relative grid grid-cols-3 divide-x divide-line border-t border-line bg-base/40 text-center">
         {[
           ["1", "Deposit", "Activates your participation"],
-          ["2", "Get entries", "One per active participation"],
+          ["2", "You're entered", "Automatically, one per person"],
           ["3", "Draw day", "Winners announced and paid"],
         ].map(([step, title, detail]) => (
           <div key={step} className="px-3 py-4">

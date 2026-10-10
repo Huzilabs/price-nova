@@ -52,7 +52,7 @@ export async function createMonthlyDraw(input: { month?: Date; adminId: string; 
   const draw = await db.draw.create({
     data: {
       name,
-      description: "One entry for every active participation. Winners are drawn on the last day of the month and paid straight into your wallet.",
+      description: "One entry for everyone with an active participation. Winners are drawn on the last day of the month and paid straight into your wallet.",
       status: "DRAFT",
       entryCutoffAt,
       drawAt,

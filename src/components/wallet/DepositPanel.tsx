@@ -28,8 +28,8 @@ export function DepositPanel({ hasParticipation }: {
       </div>
       <p className="mt-1.5 text-sm leading-relaxed text-mid">
         {hasParticipation
-          ? "Add another participation to increase your entries."
-          : "Pay by mobile wallet, card or crypto. Your deposit credits automatically."}
+          ? "You're already in every draw — one entry per person. Another deposit is not needed to take part."
+          : "Pay by mobile wallet or crypto. Our team confirms your payment, then you're in every draw."}
       </p>
       <Button
         href="/join"
