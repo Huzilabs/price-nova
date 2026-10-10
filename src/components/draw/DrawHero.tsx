@@ -17,7 +17,7 @@ import { cn } from "@/lib/cn";
  */
 export function DrawHero({
   id, name, description, imageUrl, prize, startsAt, drawAt, entryCutoffAt,
-  participants, myEntries, isSignedIn, isParticipating, upcoming,
+  participants, myEntries, isSignedIn, isParticipating, upcoming, pendingEntry = false,
 }: {
   id: string;
   name: string;
@@ -32,6 +32,8 @@ export function DrawHero({
   isSignedIn: boolean;
   isParticipating: boolean;
   upcoming: boolean;
+  /** Entered automatically when entries close; no entry number yet. */
+  pendingEntry?: boolean;
 }) {
   return (
     <section className="relative overflow-hidden rounded-2xl border border-gold/25 bg-surface shadow-gold">
@@ -86,7 +88,16 @@ export function DrawHero({
         <div className="mt-8 flex flex-col items-center gap-4">
           {isParticipating ? (
             <>
-              <TicketCount count={myEntries} />
+              {pendingEntry ? (
+                <div className="flex flex-col items-center gap-1.5 text-center">
+                  <Badge tone="mint" dot>You&apos;re in this draw</Badge>
+                  <p className="max-w-sm text-sm text-mid">
+                    Entry is automatic. Your entry number is issued when entries close.
+                  </p>
+                </div>
+              ) : (
+                <TicketCount count={myEntries} />
+              )}
               <Button href={`/draws/${id}`} variant="gold" size="lg" shine className="w-full sm:w-auto sm:min-w-56">
                 View the draw
               </Button>

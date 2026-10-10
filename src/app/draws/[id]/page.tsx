@@ -1,7 +1,9 @@
 import { notFound } from "next/navigation";
 import { getSessionUser } from "@/lib/session";
 import { db } from "@/lib/db";
-import { getDraw, categorise, myEntries } from "@/server/services/draw";
+import {
+  getDraw, categorise, myEntries, displayEntryCounts, viewerInDraw,
+} from "@/server/services/draw";
 import { AppShell } from "@/components/shell/AppShell";
 import { Card, SectionHead } from "@/components/primitives/Card";
 import { Badge, StatusBadge } from "@/components/primitives/Badge";
@@ -36,7 +38,7 @@ export default async function DrawDetailPage({ params }: { params: Promise<{ id:
 
   if (!draw || draw.status === "DRAFT") notFound();
 
-  const [entries, participation, myTickets] = await Promise.all([
+  const [entries, participation, myTickets, entryCounts, inDraw] = await Promise.all([
     myEntries(draw.id, session?.id ?? null),
     session
       ? db.participation.findFirst({ where: { userId: session.id, status: "ACTIVE" } })
@@ -44,7 +46,10 @@ export default async function DrawDetailPage({ params }: { params: Promise<{ id:
     session
       ? db.drawEntry.findMany({ where: { drawId: draw.id, userId: session.id } })
       : [],
+    displayEntryCounts([draw]),
+    viewerInDraw(draw, session?.id ?? null),
   ]);
+  const entryCount = entryCounts.get(draw.id) ?? 0;
 
   const category = categorise(draw);
   const topTier = draw.prizeTiers[0] ?? null;
@@ -65,7 +70,10 @@ export default async function DrawDetailPage({ params }: { params: Promise<{ id:
           <div className="flex flex-wrap items-center gap-1.5">
             {draw.isMain === true && <Badge tone="gold" dot>Main draw</Badge>}
             <StatusBadge status={draw.status} />
-            <Badge tone="neutral">{draw._count.entries.toLocaleString()} entries</Badge>
+            <Badge tone="neutral">
+              {entryCount.toLocaleString()} {entryCount === 1 ? "entry" : "entries"}
+            </Badge>
+            {inDraw.entered && <Badge tone="mint" dot>You&apos;re in this draw</Badge>}
           </div>
 
           <h1 className="font-display mt-3 text-h1 font-extrabold leading-tight tracking-[-0.03em] text-hi">
@@ -140,12 +148,21 @@ export default async function DrawDetailPage({ params }: { params: Promise<{ id:
               </Card>
             ) : category === "COMPLETED" ? (
               <p className="text-sm text-mid">This draw has finished.</p>
-            ) : participation ? (
+            ) : inDraw.pending ? (
               <Card tone="mint" className="p-4">
-                <Badge tone="mint" dot>Participation active</Badge>
+                <Badge tone="mint" dot>You&apos;re in this draw</Badge>
                 <p className="mt-2 text-sm leading-relaxed text-mid">
-                  You are eligible. Your entry number is issued when entries close
+                  Entry is automatic with your active participation — there is nothing
+                  to press. Your entry number is issued when entries close
                   on {formatDayMonth(draw.entryCutoffAt)}.
+                </p>
+              </Card>
+            ) : participation ? (
+              <Card tone="raised" className="p-4">
+                <Badge tone="neutral" dot>Next draw</Badge>
+                <p className="mt-2 text-sm leading-relaxed text-mid">
+                  Your participation started after this draw&apos;s entry cutoff, so you
+                  are entered automatically in the next one.
                 </p>
               </Card>
             ) : entriesClosed ? (

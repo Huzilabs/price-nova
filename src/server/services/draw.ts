@@ -106,7 +106,7 @@ export async function snapshotEntries(drawId: string) {
   const draw = await db.draw.findUniqueOrThrow({ where: { id: drawId } });
 
   const candidates = await db.participation.findMany({
-    where: { status: "ACTIVE", activatedAt: { lte: draw.entryCutoffAt }, plan: { drawEligible: true } },
+    where: eligibleParticipation(draw.entryCutoffAt),
     select: { userId: true },
     distinct: ["userId"],
   });
@@ -490,6 +490,54 @@ export async function updateDraw(input: DrawInput & {
 
     return draw;
   }, { timeout: 20_000 });
+}
+
+/**
+ * Entry is automatic: every participant active before the cutoff is frozen
+ * into the entry list when the draw closes (snapshotEntries). Until then the
+ * list is empty, so an OPEN draw reports who WILL be entered — the same rule
+ * snapshotEntries applies — rather than a misleading 0.
+ */
+const eligibleParticipation = (entryCutoffAt: Date) => ({
+  status: "ACTIVE" as const,
+  activatedAt: { lte: entryCutoffAt },
+  plan: { drawEligible: true },
+});
+
+type CountableDraw = { id: string; status: DrawStatus; entryCutoffAt: Date; _count: { entries: number } };
+
+/** Entries to show for each draw: live eligible count while OPEN, the frozen list after. */
+export async function displayEntryCounts(draws: readonly CountableDraw[]): Promise<Map<string, number>> {
+  const counts = new Map<string, number>();
+  await Promise.all(draws.map(async (draw) => {
+    if (draw.status !== "OPEN" || draw._count.entries > 0) {
+      counts.set(draw.id, draw._count.entries);
+      return;
+    }
+    const users = await db.participation.findMany({
+      where: eligibleParticipation(draw.entryCutoffAt),
+      select: { userId: true },
+      distinct: ["userId"],
+    });
+    counts.set(draw.id, users.length);
+  }));
+  return counts;
+}
+
+/**
+ * Whether the viewer is in this draw: they hold an entry, or the draw is still
+ * OPEN and they will be entered automatically when it closes.
+ */
+export async function viewerInDraw(draw: Omit<CountableDraw, "_count">, userId: string | null) {
+  if (!userId) return { entered: false, pending: false };
+  if (await db.drawEntry.count({ where: { drawId: draw.id, userId } }) > 0) {
+    return { entered: true, pending: false };
+  }
+  if (draw.status !== "OPEN") return { entered: false, pending: false };
+  const eligible = await db.participation.count({
+    where: { userId, ...eligibleParticipation(draw.entryCutoffAt) },
+  });
+  return { entered: eligible > 0, pending: eligible > 0 };
 }
 
 /** How many entries this user holds in a given draw. */

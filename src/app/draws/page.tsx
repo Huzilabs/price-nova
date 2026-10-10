@@ -1,6 +1,8 @@
 import { getSessionUser } from "@/lib/session";
 import { db } from "@/lib/db";
-import { listPublicDraws, categorise } from "@/server/services/draw";
+import {
+  listPublicDraws, categorise, displayEntryCounts, viewerInDraw,
+} from "@/server/services/draw";
 import { AppShell } from "@/components/shell/AppShell";
 import { SectionHead, EmptyState } from "@/components/primitives/Card";
 import { DrawCard } from "@/components/draw/DrawCard";
@@ -28,6 +30,14 @@ export default async function DrawsPage() {
       })
     : [];
   const mine = new Map(entryCounts.map((row) => [row.drawId, row._count]));
+  const totals = await displayEntryCounts(all);
+  // Only live draws can be pending; entered ones already show their count.
+  const pending = new Set(
+    session
+      ? (await Promise.all(active.map(async (d) => [d.id, (await viewerInDraw(d, session.id)).pending] as const)))
+          .filter(([, p]) => p).map(([id]) => id)
+      : [],
+  );
 
   const groups = [
     { key: "active", title: "Live now", kicker: "Open for entries", draws: active },
@@ -68,13 +78,14 @@ export default async function DrawsPage() {
                     imageUrl={draw.imageUrl}
                     prize={draw.prizeTiers[0]?.prizeAmount ?? null}
                     tierCount={draw.prizeTiers.length}
-                    entries={draw._count.entries}
+                    entries={totals.get(draw.id) ?? 0}
                     myEntries={mine.get(draw.id) ?? 0}
                     startsAt={draw.startsAt}
                     entryCutoffAt={draw.entryCutoffAt}
                     drawAt={draw.drawAt}
                     category={categorise(draw)}
                     isMain={draw.isMain === true}
+                    inDraw={pending.has(draw.id)}
                   />
                 ))}
               </div>

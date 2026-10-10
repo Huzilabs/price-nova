@@ -2,7 +2,7 @@ import { getSessionUser } from "@/lib/session";
 import { db } from "@/lib/db";
 import { getPublicHome, getMemberHome } from "@/server/queries/home";
 import { DrawHero, DrawHeroEmpty } from "@/components/draw/DrawHero";
-import { categorise } from "@/server/services/draw";
+import { categorise, displayEntryCounts, viewerInDraw } from "@/server/services/draw";
 import { SectionHead, Card, EmptyState } from "@/components/primitives/Card";
 import { RewardCard, type RewardState } from "@/components/reward/RewardCard";
 import { WinnerCard } from "@/components/reward/WinnerCard";
@@ -26,6 +26,9 @@ export default async function HomePage() {
   const myEntries = pub.draw && session
     ? await db.drawEntry.count({ where: { drawId: pub.draw.id, userId: session.id } })
     : 0;
+
+  const participants = pub.draw ? (await displayEntryCounts([pub.draw])).get(pub.draw.id) ?? 0 : 0;
+  const inMainDraw = pub.draw && session ? await viewerInDraw(pub.draw, session.id) : null;
 
   const topTier = pub.draw?.prizeTiers[0] ?? null;
   const isParticipating = Boolean(me?.participation);
@@ -58,7 +61,8 @@ export default async function HomePage() {
           startsAt={pub.draw.startsAt}
           drawAt={pub.draw.drawAt}
           entryCutoffAt={pub.draw.entryCutoffAt}
-          participants={pub.draw._count.entries}
+          participants={participants}
+          pendingEntry={inMainDraw?.pending ?? false}
           myEntries={myEntries}
           isSignedIn={Boolean(session)}
           isParticipating={isParticipating}

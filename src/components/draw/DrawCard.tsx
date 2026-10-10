@@ -17,7 +17,7 @@ import type { DrawCategory } from "@/server/services/draw";
  */
 export function DrawCard({
   id, name, imageUrl, prize, tierCount, entries, myEntries,
-  startsAt, entryCutoffAt, drawAt, category, isMain,
+  startsAt, entryCutoffAt, drawAt, category, isMain, inDraw = false,
 }: {
   id: string;
   name: string;
@@ -31,6 +31,8 @@ export function DrawCard({
   drawAt: Date;
   category: DrawCategory;
   isMain: boolean;
+  /** Will be entered automatically when entries close. */
+  inDraw?: boolean;
 }) {
   const upcoming = category === "UPCOMING";
   const done = category === "COMPLETED";
@@ -81,10 +83,14 @@ export function DrawCard({
           )}
         </div>
 
-        {myEntries > 0 && (
+        {myEntries > 0 ? (
           <div className="mt-3 flex items-center gap-1.5 text-sm">
             <span className="font-bold text-mint">{myEntries}</span>
             <span className="text-mid">{myEntries === 1 ? "entry" : "entries"} yours</span>
+          </div>
+        ) : inDraw && (
+          <div className="mt-3">
+            <Badge tone="mint" dot>You&apos;re in this draw</Badge>
           </div>
         )}
 
